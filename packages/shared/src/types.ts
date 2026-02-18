@@ -21,3 +21,26 @@ export interface GPUSpec {
   hasInfiniBand?: boolean;
   hasNVLink?: boolean;
 }
+
+export interface RvConfig {
+  connection: {
+    host: string;
+    user: string;
+    hostname: string;
+  };
+  defaults: {
+    account: string;
+    gpu_type: string;
+    time: string;
+    partition: string;
+  };
+  paths: {
+    scratch: string;
+    home: string;
+  };
+  notifications: {
+    enabled: boolean;
+    email: string;
+    token?: string;
+  };
+}
