@@ -167,6 +167,7 @@ export interface UserRequest {
   user: string;
   workDir?: string;
   moduleLoads?: string[];
+  memPerCpu?: string;
   notifyUrl?: string;
   notifyToken?: string;
 }

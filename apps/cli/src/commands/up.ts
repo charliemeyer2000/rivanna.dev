@@ -19,6 +19,7 @@ interface UpOptions {
   time: string;
   run?: string;
   name?: string;
+  mem?: string;
   mig?: boolean;
   dryRun?: boolean;
   json?: boolean;
@@ -36,6 +37,7 @@ export function registerUpCommand(program: Command) {
     .option("--time <duration>", "total time needed: 2h, 24h, 3d", "2:59:00")
     .option("--run <command>", "batch mode: run command then exit")
     .option("--name <name>", "job name")
+    .option("--mem <size>", "memory per CPU (e.g., 16G, 32G)")
     .option("--mig", "shortcut for --gpu 1 --type mig (free, instant)")
     .option("--dry-run", "show strategies without submitting")
     .option("--json", "output as JSON")
@@ -106,6 +108,7 @@ async function runUp(options: UpOptions) {
     account: config.defaults.account,
     user: config.connection.user,
     command: options.run,
+    memPerCpu: options.mem,
     notifyUrl: config.notifications.enabled ? undefined : undefined, // Phase 8
     notifyToken: config.notifications.token,
   };

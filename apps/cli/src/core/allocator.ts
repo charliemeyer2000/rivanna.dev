@@ -621,6 +621,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     command: request.command ?? "/bin/bash",
     nodes: strategy.nodes > 1 ? strategy.nodes : undefined,
     ntasks: strategy.nodes > 1 ? strategy.nodes : undefined,
+    memPerCpu: request.memPerCpu,
     features: strategy.features,
     workDir: request.workDir,
     moduleLoads: request.moduleLoads,
