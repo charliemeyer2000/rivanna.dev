@@ -11,6 +11,9 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "rivanna.dev",
   description: "effortless GPU computing on UVA's Rivanna cluster",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
