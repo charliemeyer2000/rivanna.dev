@@ -28,9 +28,11 @@ export class SSHClient {
   static fromConfig(config: {
     connection: { host: string; user: string };
   }): SSHClient {
+    // When host is an SSH alias (e.g., "rv-hpc", "uva-hpc"), the user is
+    // already configured in ~/.ssh/config. Don't prepend user@ or SSH will
+    // fail with BatchMode=yes if the alias overrides the username.
     return new SSHClient({
       host: config.connection.host,
-      user: config.connection.user,
     });
   }
 
