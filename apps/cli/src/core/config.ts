@@ -17,6 +17,7 @@ export const RvConfigSchema = z.object({
     time: z.string().default("2:59:00"),
     partition: z.string().default("gpu"),
     ai_naming: z.boolean().optional(),
+    ai_api_key: z.string().optional(),
   }),
   paths: z.object({
     scratch: z.string(),

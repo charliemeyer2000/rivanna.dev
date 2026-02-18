@@ -215,14 +215,14 @@ async function createTunnel(
     );
   }
 
-  // ssh -f forks into background — find the PID of the SSH tunnel
-  // Use pgrep to find it by the exact tunnel args
-  const pgrepResult = Bun.spawnSync(
-    ["pgrep", "-f", `ssh -f -N -L ${localPort}:${node}:${remotePort} ${host}`],
+  // ssh -f forks into background — find the PID via lsof on the local port
+  await new Promise((r) => setTimeout(r, 500)); // brief wait for ssh to bind
+  const lsofResult = Bun.spawnSync(
+    ["lsof", "-ti", `:${localPort}`, "-sTCP:LISTEN"],
     { stdout: "pipe" },
   );
   const pidStr = new TextDecoder()
-    .decode(pgrepResult.stdout)
+    .decode(lsofResult.stdout)
     .trim()
     .split("\n")[0];
   const pid = pidStr ? parseInt(pidStr, 10) : 0;

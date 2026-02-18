@@ -56,7 +56,7 @@ export class SlurmClient {
   async getJobs(user?: string): Promise<Job[]> {
     const userArg = user ? `-u ${user}` : `-u ${this.user}`;
     const output = await this.ssh.exec(
-      `squeue ${userArg} -o "${SQUEUE_FORMAT}" --noheader`,
+      `squeue --all ${userArg} -o "${SQUEUE_FORMAT}" --noheader`,
     );
     return parseSqueue(output);
   }
@@ -164,8 +164,8 @@ export class SlurmClient {
     const [sinfoOut, squeueRunOut, squeuePendOut, sshareOut] =
       await this.ssh.execBatch([
         `sinfo --Node ${partitionArg} -o "${SINFO_FORMAT}" --noheader`,
-        `squeue -u ${this.user} -t RUNNING -o "${SQUEUE_FORMAT}" --noheader`,
-        `squeue -u ${this.user} -t PENDING -o "${SQUEUE_FORMAT}" --noheader`,
+        `squeue --all -u ${this.user} -t RUNNING -o "${SQUEUE_FORMAT}" --noheader`,
+        `squeue --all -u ${this.user} -t PENDING -o "${SQUEUE_FORMAT}" --noheader`,
         `sshare -u ${this.user} -l`,
       ]);
 

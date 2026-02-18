@@ -83,18 +83,17 @@ async function runUp(options: UpOptions) {
   let jobName = options.name;
   if (!jobName) {
     jobName = generateJobName(options.run);
-    if (config.defaults.ai_naming && options.run) {
-      const envVars = getAllEnvVars();
-      const openaiKey = envVars["OPENAI_API_KEY"];
-      const anthropicKey = envVars["ANTHROPIC_API_KEY"];
-      if (openaiKey || anthropicKey) {
-        const provider = openaiKey
-          ? ("openai" as const)
-          : ("anthropic" as const);
-        const apiKey = (openaiKey ?? anthropicKey)!;
-        const aiName = await generateAIJobName(options.run, apiKey, provider);
-        if (aiName) jobName = `rv-${aiName}`;
-      }
+    if (
+      config.defaults.ai_naming &&
+      config.defaults.ai_api_key &&
+      options.run
+    ) {
+      const apiKey = config.defaults.ai_api_key;
+      const provider = apiKey.startsWith("sk-ant-")
+        ? ("anthropic" as const)
+        : ("openai" as const);
+      const aiName = await generateAIJobName(options.run, apiKey, provider);
+      if (aiName) jobName = `rv-${aiName}`;
     }
   }
 

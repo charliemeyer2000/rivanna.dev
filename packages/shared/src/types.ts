@@ -254,6 +254,7 @@ export interface RvConfig {
     time: string;
     partition: string;
     ai_naming?: boolean;
+    ai_api_key?: string;
   };
   paths: {
     scratch: string;

@@ -110,7 +110,7 @@ async function runStatus(options: StatusOptions) {
     await slurm.sshClient.execBatch([
       "allocations 2>/dev/null || true",
       "hdquota 2>/dev/null || true",
-      `squeue -u ${user} -o "${SQUEUE_FORMAT}" --noheader`,
+      `squeue --all -u ${user} -o "${SQUEUE_FORMAT}" --noheader`,
       `sinfo --Node -p gpu,gpu-mig,interactive-rtx3090,gpu-a6000,gpu-a40,gpu-a100-40,gpu-a100-80,gpu-v100,gpu-h200 -o "${SINFO_FORMAT}" --noheader`,
     ]);
 

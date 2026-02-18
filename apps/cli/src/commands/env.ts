@@ -1,7 +1,5 @@
 import type { Command } from "commander";
-import { confirm } from "@inquirer/prompts";
 import { setEnvVar, removeEnvVar, getAllEnvVars } from "@/core/env-store.ts";
-import { loadConfig, saveConfig } from "@/core/config.ts";
 import { theme } from "@/lib/theme.ts";
 
 const SENSITIVE_PATTERNS = ["KEY", "TOKEN", "SECRET", "PASSWORD"];
@@ -28,33 +26,6 @@ export function registerEnvCommand(program: Command) {
       try {
         setEnvVar(key, value);
         console.log(theme.success(`Set ${key}=${maskValue(key, value)}`));
-
-        // Offer AI naming if API key was set
-        if (
-          (key === "OPENAI_API_KEY" || key === "ANTHROPIC_API_KEY") &&
-          value.length > 0
-        ) {
-          const config = loadConfig();
-          if (config && config.defaults.ai_naming === undefined) {
-            const enable = await confirm({
-              message:
-                "Enable AI-generated job names? (uses this key for short name generation)",
-              default: true,
-            });
-            if (enable) {
-              config.defaults.ai_naming = true;
-              saveConfig(config);
-              console.log(
-                theme.muted(
-                  "  AI naming enabled. Disable with: rv env set-config ai_naming false",
-                ),
-              );
-            } else {
-              config.defaults.ai_naming = false;
-              saveConfig(config);
-            }
-          }
-        }
       } catch (error) {
         if (error instanceof Error) {
           console.error(theme.error(`\nError: ${error.message}`));
