@@ -48,6 +48,12 @@ export class SlurmParseError extends RvError {
   }
 }
 
+export class AllocatorError extends RvError {
+  constructor(message: string) {
+    super(message, "ALLOCATOR_ERROR");
+  }
+}
+
 export class NotInitializedError extends RvError {
   constructor() {
     super(

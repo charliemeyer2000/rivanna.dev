@@ -14,4 +14,12 @@ export type {
   SbatchOptions,
   TemplateOptions,
   SystemState,
+  StrategyKind,
+  TopologyKind,
+  UserRequest,
+  BackfillProbe,
+  Strategy,
+  StrategySubmission,
+  AllocatorResult,
+  AllocationOutcome,
 } from "./types.ts";

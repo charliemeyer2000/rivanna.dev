@@ -29,6 +29,18 @@ export class SlurmClient {
     this.account = account;
   }
 
+  get sshClient(): SSHClient {
+    return this.ssh;
+  }
+
+  get username(): string {
+    return this.user;
+  }
+
+  get accountName(): string {
+    return this.account;
+  }
+
   // --- Query methods ---
 
   async getNodeState(partitions?: string[]): Promise<NodeState[]> {

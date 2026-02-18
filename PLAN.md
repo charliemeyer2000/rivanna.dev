@@ -38,6 +38,10 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-18: hdquota output is a table with multi-word types ("Home Directory"), `value unit` size columns.
 - 2026-02-18: allocations output is a table (Account/Balance/Reserved/Available), not key-value pairs.
 - 2026-02-18: sinfo `--Node` with multiple partitions duplicates rows per partition. Caller should deduplicate.
+- 2026-02-18: Allocator pruning must only happen within same GPU type+topology — cross-type pruning destroys fan-out.
+- 2026-02-18: GPU count must not be silently capped — skip types that can't fulfill the request entirely.
+- 2026-02-18: Rivanna CPU partitions: `standard` (7d, 1 node, 40 CPU, 768GB), `parallel` (3d, 2-64 nodes, 96 CPU). DefMemPerCPU=4000 across all. CPU-only jobs are a separate codepath.
+- 2026-02-18: No Ink/React in either project — use ora + chalk + @inquirer/prompts for all CLI UI.
 
 ---
 

@@ -144,6 +144,80 @@ export interface SystemState {
   timestamp: Date;
 }
 
+// --- Allocator types ---
+
+export type StrategyKind =
+  | "direct"
+  | "backfill"
+  | "checkpoint"
+  | "mig"
+  | "interactive";
+
+export type TopologyKind = "single-node" | "multi-node";
+
+export interface UserRequest {
+  gpuCount: number;
+  gpuType?: GPUType;
+  vramMin?: number;
+  totalTimeSeconds: number;
+  totalTime: string;
+  command?: string;
+  jobName: string;
+  account: string;
+  user: string;
+  workDir?: string;
+  moduleLoads?: string[];
+  notifyUrl?: string;
+  notifyToken?: string;
+}
+
+export interface BackfillProbe {
+  gpuType: GPUType;
+  partition: string;
+  maxBackfillSeconds: number;
+  fullyBackfillable: boolean;
+}
+
+export interface Strategy {
+  id: string;
+  kind: StrategyKind;
+  gpuType: GPUType;
+  partition: string;
+  gres: string;
+  walltime: string;
+  walltimeSeconds: number;
+  gpusPerNode: number;
+  nodes: number;
+  topology: TopologyKind;
+  checkpointRestart: boolean;
+  estimatedSU: number;
+  estimatedWaitSeconds: number;
+  backfillEligible: boolean;
+  features?: string[];
+  score: number;
+  label: string;
+}
+
+export interface StrategySubmission {
+  strategy: Strategy;
+  jobId: string;
+  state: JobState;
+  nodes: string[];
+}
+
+export interface AllocatorResult {
+  systemState: SystemState;
+  backfillProbes: BackfillProbe[];
+  strategies: Strategy[];
+  compatibleGPUs: GPUType[];
+}
+
+export interface AllocationOutcome {
+  winner: StrategySubmission;
+  allSubmissions: StrategySubmission[];
+  allocationTimeMs: number;
+}
+
 // --- Config types ---
 
 export interface RvConfig {
