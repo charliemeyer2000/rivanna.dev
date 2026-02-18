@@ -42,6 +42,12 @@ export class ConfigError extends RvError {
   }
 }
 
+export class SlurmParseError extends RvError {
+  constructor(parser: string, message: string) {
+    super(`Failed to parse ${parser} output: ${message}`, "SLURM_PARSE_ERROR");
+  }
+}
+
 export class NotInitializedError extends RvError {
   constructor() {
     super(

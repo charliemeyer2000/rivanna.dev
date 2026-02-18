@@ -1,0 +1,57 @@
+import type { TemplateOptions } from "@rivanna/shared";
+import { generatePreamble, generateCompletionNotify } from "./base.ts";
+
+/**
+ * Generate a checkpoint-restart Slurm batch script.
+ *
+ * Uses timeout to signal the user command before walltime expires,
+ * tracks total elapsed time across segments, and auto-resubmits
+ * if total requested time hasn't been reached.
+ */
+export function generateCheckpointScript(opts: TemplateOptions): string {
+  const totalTimeSeconds = opts.totalTimeSeconds ?? 86400;
+  const walltimeSeconds = opts.walltimeSeconds ?? 10740; // ~2:59:00
+  const bufferSeconds = opts.bufferSeconds ?? 600;
+  const timeoutSeconds = walltimeSeconds - bufferSeconds;
+
+  const lines: string[] = [];
+
+  lines.push(generatePreamble(opts));
+
+  lines.push(`# Checkpoint-restart tracking`);
+  lines.push(`RV_SEGMENT_START=$(date +%s)`);
+  lines.push(`RV_TOTAL_ELAPSED=\${RV_TOTAL_ELAPSED:-0}`);
+  lines.push(`RV_TOTAL_REQUESTED=${totalTimeSeconds}`);
+  lines.push("");
+
+  lines.push(`BUFFER_SECONDS=${bufferSeconds}`);
+  lines.push(`WALLTIME_SECONDS=${walltimeSeconds}`);
+  lines.push(`TIMEOUT=$((WALLTIME_SECONDS - BUFFER_SECONDS))`);
+  lines.push("");
+
+  // Run with timeout
+  lines.push(`# Run command with timeout (sends SIGUSR1 before walltime)`);
+  lines.push(`timeout --signal=SIGUSR1 \${TIMEOUT}s ${opts.command}`);
+  lines.push(`EXIT_CODE=$?`);
+  lines.push("");
+
+  // Calculate elapsed and decide whether to resubmit
+  lines.push(`# Check if we need to resubmit`);
+  lines.push(`SEGMENT_ELAPSED=$(( $(date +%s) - RV_SEGMENT_START ))`);
+  lines.push(`NEW_TOTAL=$(( RV_TOTAL_ELAPSED + SEGMENT_ELAPSED ))`);
+  lines.push("");
+
+  lines.push(
+    `if [ $EXIT_CODE -ne 0 ] && [ $NEW_TOTAL -lt $RV_TOTAL_REQUESTED ]; then`,
+  );
+  lines.push(`  export RV_TOTAL_ELAPSED=$NEW_TOTAL`);
+  lines.push(`  sbatch --export=ALL,RV_TOTAL_ELAPSED=$NEW_TOTAL $0`);
+  if (opts.notifyUrl && opts.notifyToken) {
+    lines.push(`  _rv_notify RESUBMITTED`);
+  }
+  lines.push(`else`);
+  lines.push(generateCompletionNotify(opts).trim() || "  true");
+  lines.push(`fi`);
+
+  return lines.join("\n");
+}

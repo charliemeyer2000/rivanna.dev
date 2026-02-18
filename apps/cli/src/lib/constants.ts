@@ -34,3 +34,14 @@ export const CACHE_ENV_EXPORTS = (user: string) => [
 // .bashrc block markers
 export const BASHRC_MARKER_START = "# --- rv cache config (managed by rv) ---";
 export const BASHRC_MARKER_END = "# --- end rv cache config ---";
+
+// Slurm command format strings
+export const SINFO_FORMAT = "%N %T %G %C %m";
+export const SQUEUE_FORMAT = "%i %j %T %M %l %P %b %N %R";
+export const SACCT_FORMAT = "JobID,JobName,State,Elapsed,ExitCode,Partition";
+
+// Default module loads for Slurm scripts
+export const DEFAULT_MODULES = ["cuda/12.8.0", "miniforge/24.11.3-py3.12"];
+
+// Notification webhook URL
+export const NOTIFY_URL = "https://www.rivanna.dev/api/notify";

@@ -1,0 +1,88 @@
+import type { TemplateOptions } from "@rivanna/shared";
+import { PATHS } from "@rivanna/shared";
+import { DEFAULT_MODULES } from "@/lib/constants.ts";
+
+/**
+ * Generate SBATCH preamble directives + environment setup.
+ */
+export function generatePreamble(opts: TemplateOptions): string {
+  const lines: string[] = ["#!/bin/bash"];
+
+  // SBATCH directives
+  lines.push(`#SBATCH -p ${opts.partition}`);
+  lines.push(`#SBATCH --gres=${opts.gres}`);
+  lines.push(`#SBATCH -t ${opts.time}`);
+  lines.push(`#SBATCH -A ${opts.account}`);
+  lines.push(`#SBATCH -J ${opts.jobName}`);
+
+  const logDir = PATHS.logs(opts.user);
+  lines.push(`#SBATCH -o ${opts.output ?? `${logDir}/%x-%j.out`}`);
+  lines.push(`#SBATCH -e ${opts.error ?? `${logDir}/%x-%j.err`}`);
+
+  if (opts.nodes) lines.push(`#SBATCH -N ${opts.nodes}`);
+  if (opts.ntasks) lines.push(`#SBATCH --ntasks=${opts.ntasks}`);
+  if (opts.cpusPerTask)
+    lines.push(`#SBATCH --cpus-per-task=${opts.cpusPerTask}`);
+  if (opts.memPerCpu) lines.push(`#SBATCH --mem-per-cpu=${opts.memPerCpu}`);
+  if (opts.exclusive) lines.push("#SBATCH --exclusive");
+  if (opts.features && opts.features.length > 0) {
+    lines.push(`#SBATCH --constraint=${opts.features.join("&")}`);
+  }
+
+  lines.push("");
+
+  // Module loads
+  const modules = opts.moduleLoads ?? DEFAULT_MODULES;
+  if (modules.length > 0) {
+    lines.push(`module load ${modules.join(" ")}`);
+    lines.push("");
+  }
+
+  // Source env file (written by SlurmClient.writeEnvFile before submission)
+  const envDir = opts.envFileDir ?? PATHS.envFiles(opts.user);
+  lines.push(`# Source per-job env vars (if any)`);
+  lines.push(`if [ -f "${envDir}/$SLURM_JOB_ID.env" ]; then`);
+  lines.push(`  source "${envDir}/$SLURM_JOB_ID.env"`);
+  lines.push(`  rm -f "${envDir}/$SLURM_JOB_ID.env"`);
+  lines.push("fi");
+  lines.push("");
+
+  // Notification hook
+  if (opts.notifyUrl && opts.notifyToken) {
+    lines.push(`# rv notification hook`);
+    lines.push(`_rv_notify() {`);
+    lines.push(`  curl -sf -X POST "${opts.notifyUrl}" \\`);
+    lines.push(`    -H "Authorization: Bearer ${opts.notifyToken}" \\`);
+    lines.push(`    -H "Content-Type: application/json" \\`);
+    lines.push(
+      `    -d "{\\"user\\":\\"$USER\\",\\"jobId\\":\\"$SLURM_JOB_ID\\",\\"jobName\\":\\"$SLURM_JOB_NAME\\",\\"event\\":\\"$1\\",\\"node\\":\\"$(hostname)\\",\\"timestamp\\":\\"$(date -Iseconds)\\"}" 2>/dev/null &`,
+    );
+    lines.push(`}`);
+    lines.push(`trap '_rv_notify FAILED' ERR`);
+    lines.push(`_rv_notify STARTED`);
+    lines.push("");
+  }
+
+  // Cache env vars
+  lines.push(`# Cache directories`);
+  lines.push(`export UV_CACHE_DIR=${PATHS.cache.uv(opts.user)}`);
+  lines.push(`export PIP_CACHE_DIR=${PATHS.cache.pip(opts.user)}`);
+  lines.push(`export HF_HOME=${PATHS.cache.hf(opts.user)}`);
+  lines.push("");
+
+  // Working directory
+  if (opts.workDir) {
+    lines.push(`cd "${opts.workDir}"`);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Generate the completion notification call (for end of script).
+ */
+export function generateCompletionNotify(opts: TemplateOptions): string {
+  if (!opts.notifyUrl || !opts.notifyToken) return "";
+  return "\n_rv_notify COMPLETED\n";
+}

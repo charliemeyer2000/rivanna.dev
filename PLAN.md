@@ -25,7 +25,19 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 
 > Agents: add discoveries, gotchas, and decisions here as you build. This is shared state across all coding sessions. Keep entries concise. Prefix with date.
 
-*(No learnings yet — project is greenfield.)*
+- 2026-02-18: pnpm workspaces (not bun) at root. Bun only for CLI build/compile.
+- 2026-02-18: CI `bun install` must run from repo root, not apps/cli, to resolve @rivanna/shared workspace dep.
+- 2026-02-18: Next.js 16 `next lint` is broken — use `eslint` directly instead.
+- 2026-02-18: smol-toml for TOML parsing (14KB, zero deps, ESM). Zod v4 for validation.
+- 2026-02-18: SSHClient uses Bun.spawn, not child_process. ControlMaster for connection reuse.
+- 2026-02-18: Vercel redirects rivanna.dev → www.rivanna.dev. Install script uses www. URL.
+- 2026-02-18: create-next-app prompts interactively for React Compiler — pipe `echo "n"`.
+- 2026-02-18: sinfo GRES includes socket info `gpu:a6000:8(S:0-47)` — regex must match prefix only.
+- 2026-02-18: sinfo states include `mixed-`, `inval`, `reserved` — map to mixed/down/allocated.
+- 2026-02-18: sshare FairShare is column 7 of 11, NOT last column. Find user row (User column populated).
+- 2026-02-18: hdquota output is a table with multi-word types ("Home Directory"), `value unit` size columns.
+- 2026-02-18: allocations output is a table (Account/Balance/Reserved/Available), not key-value pairs.
+- 2026-02-18: sinfo `--Node` with multiple partitions duplicates rows per partition. Caller should deduplicate.
 
 ---
 
@@ -98,40 +110,40 @@ The `rv` CLI should feel like a sibling product to `uva`. Same quality, same pat
 
 ### GPU Inventory
 
-| GPU | Partition | Total | VRAM | SU/GPU-hr | Typical Backfill Wait |
-|-----|-----------|-------|------|-----------|----------------------|
-| MIG 1g.10gb | gpu-mig | 56 slices | 10 GB | **FREE (0)** | **Instant** |
-| RTX 3090 | interactive-rtx3090 | 16 | 24 GB | 113 | **Instant** |
-| A6000 | gpu-a6000 | 112 | 48 GB | 143 | ~1 min |
-| A40 | gpu-a40 | 88 | 48 GB | 187 | ~5 min |
-| H200 | gpu-h200 | 8 | 141 GB | 817 | ~10 min |
-| A100 40GB | gpu-a100-40 | 16 | 40 GB | 464 | ~10 min |
-| A100 80GB | gpu-a100-80 | 128 | 80 GB | 509 | ~15 min |
-| V100 | gpu-v100 | 8 | 32 GB | 21 | ~60 min |
+| GPU         | Partition           | Total     | VRAM   | SU/GPU-hr    | Typical Backfill Wait |
+| ----------- | ------------------- | --------- | ------ | ------------ | --------------------- |
+| MIG 1g.10gb | gpu-mig             | 56 slices | 10 GB  | **FREE (0)** | **Instant**           |
+| RTX 3090    | interactive-rtx3090 | 16        | 24 GB  | 113          | **Instant**           |
+| A6000       | gpu-a6000           | 112       | 48 GB  | 143          | ~1 min                |
+| A40         | gpu-a40             | 88        | 48 GB  | 187          | ~5 min                |
+| H200        | gpu-h200            | 8         | 141 GB | 817          | ~10 min               |
+| A100 40GB   | gpu-a100-40         | 16        | 40 GB  | 464          | ~10 min               |
+| A100 80GB   | gpu-a100-80         | 128       | 80 GB  | 509          | ~15 min               |
+| V100        | gpu-v100            | 8         | 32 GB  | 21           | ~60 min               |
 
 (Wait times are with backfill-eligible walltime. Without backfill: 20-40+ hour waits.)
 
 ### Storage
 
-| Location | Size | Notes |
-|----------|------|-------|
-| `/home/<user>` | 200 GB | Persistent, backed up |
-| `/scratch/<user>` | 10 TB | Fast (Weka), **purged after 90 days** |
-| `/standard/<group>` | 20 TB | Shared, persistent |
-| `/project/<group>` | varies | Shared, persistent |
+| Location            | Size   | Notes                                 |
+| ------------------- | ------ | ------------------------------------- |
+| `/home/<user>`      | 200 GB | Persistent, backed up                 |
+| `/scratch/<user>`   | 10 TB  | Fast (Weka), **purged after 90 days** |
+| `/standard/<group>` | 20 TB  | Shared, persistent                    |
+| `/project/<group>`  | varies | Shared, persistent                    |
 
 ### User Limits
 
-| Resource | Limit |
-|----------|-------|
-| Max GPUs running (gpu partition) | 32 per user |
-| Max H200 GPUs | 4 per user |
-| Max interactive GPUs | 2 per user |
-| Max MIG slices | 28 per user |
-| Max walltime (gpu) | 3 days |
-| Max walltime (interactive) | 12 hours |
-| Max concurrent submissions | 10,000 |
-| Default walltime | 5 hours (**avoid — above backfill threshold**) |
+| Resource                         | Limit                                          |
+| -------------------------------- | ---------------------------------------------- |
+| Max GPUs running (gpu partition) | 32 per user                                    |
+| Max H200 GPUs                    | 4 per user                                     |
+| Max interactive GPUs             | 2 per user                                     |
+| Max MIG slices                   | 28 per user                                    |
+| Max walltime (gpu)               | 3 days                                         |
+| Max walltime (interactive)       | 12 hours                                       |
+| Max concurrent submissions       | 10,000                                         |
+| Default walltime                 | 5 hours (**avoid — above backfill threshold**) |
 
 ### Key Scheduler Findings
 
@@ -164,10 +176,10 @@ Discovered empirically by running experiments on the cluster:
 
 ### Environments
 
-| Environment | Domain | Purpose |
-|-------------|--------|---------|
+| Environment | Domain           | Purpose                               |
+| ----------- | ---------------- | ------------------------------------- |
 | Development | `localhost:3000` | Local dev with `bun dev` / `next dev` |
-| Production | `rivanna.dev` | Live site on Vercel |
+| Production  | `rivanna.dev`    | Live site on Vercel                   |
 
 ### Vercel Setup
 
@@ -197,11 +209,11 @@ vc env ls
 
 Required environment variables:
 
-| Variable | Environments | Purpose |
-|----------|-------------|---------|
-| `RESEND_API_KEY` | production, development | Send email notifications via Resend |
-| `GITHUB_TOKEN` | production | Proxy GitHub Release binaries for install script |
-| `NOTIFICATION_SECRET` | production, development | Verify notification tokens from CLI |
+| Variable              | Environments            | Purpose                                          |
+| --------------------- | ----------------------- | ------------------------------------------------ |
+| `RESEND_API_KEY`      | production, development | Send email notifications via Resend              |
+| `GITHUB_TOKEN`        | production              | Proxy GitHub Release binaries for install script |
+| `NOTIFICATION_SECRET` | production, development | Verify notification tokens from CLI              |
 
 ### CI/CD
 
@@ -347,86 +359,86 @@ These go in `packages/shared/src/gpu-specs.ts` and `packages/shared/src/constant
 ```typescript
 export const GPU_SPECS = {
   mig: {
-    partition: 'gpu-mig',
-    gres: 'gpu:1g.10gb',
+    partition: "gpu-mig",
+    gres: "gpu:1g.10gb",
     vramGB: 10,
     suPerGPUHour: 0,
     maxPerUser: 28,
     maxPerJob: 1,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 56,
   },
   rtx3090: {
-    partition: 'interactive-rtx3090',
-    gres: 'gpu:rtx3090',
+    partition: "interactive-rtx3090",
+    gres: "gpu:rtx3090",
     vramGB: 24,
     suPerGPUHour: 113.23,
     maxPerUser: 2,
     maxPerJob: 2,
-    maxWalltime: '12:00:00',
+    maxWalltime: "12:00:00",
     perNode: 4,
   },
   a6000: {
-    partition: 'gpu-a6000',
-    gres: 'gpu:a6000',
+    partition: "gpu-a6000",
+    gres: "gpu:a6000",
     vramGB: 48,
     suPerGPUHour: 142.73,
     maxPerUser: 32,
     maxPerJob: 8,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 8,
   },
   a40: {
-    partition: 'gpu-a40',
-    gres: 'gpu:a40',
+    partition: "gpu-a40",
+    gres: "gpu:a40",
     vramGB: 48,
     suPerGPUHour: 186.69,
     maxPerUser: 32,
     maxPerJob: 8,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 8,
   },
   a100_40: {
-    partition: 'gpu-a100-40',
-    gres: 'gpu:a100',
+    partition: "gpu-a100-40",
+    gres: "gpu:a100",
     vramGB: 40,
     suPerGPUHour: 463.81,
     maxPerUser: 32,
     maxPerJob: 8,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 8,
   },
   a100_80: {
-    partition: 'gpu-a100-80',
-    gres: 'gpu:a100',
+    partition: "gpu-a100-80",
+    gres: "gpu:a100",
     vramGB: 80,
     suPerGPUHour: 508.89,
     maxPerUser: 32,
     maxPerJob: 8,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 8,
-    features: ['gpupod', 'a100_80gb'],
+    features: ["gpupod", "a100_80gb"],
     hasInfiniBand: true,
     hasNVLink: true,
   },
   v100: {
-    partition: 'gpu-v100',
-    gres: 'gpu:v100',
+    partition: "gpu-v100",
+    gres: "gpu:v100",
     vramGB: 32,
     suPerGPUHour: 20.96,
     maxPerUser: 32,
     maxPerJob: 4,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 4,
   },
   h200: {
-    partition: 'gpu-h200',
-    gres: 'gpu:h200',
+    partition: "gpu-h200",
+    gres: "gpu:h200",
     vramGB: 141,
     suPerGPUHour: 816.67,
     maxPerUser: 4,
     maxPerJob: 4,
-    maxWalltime: '3-00:00:00',
+    maxWalltime: "3-00:00:00",
     perNode: 8,
   },
 } as const;
@@ -436,9 +448,9 @@ export const SCHEDULER_CONFIG = {
   schedMinIntervalSeconds: 2,
   priorityDecayHalfLifeDays: 7,
   priorityMaxAgeDays: 28,
-  preemptMode: 'OFF',
-  defaultWalltime: '5:00:00', // AVOID — above typical backfill threshold
-  recommendedWalltime: '2:59:00', // just under typical backfill threshold
+  preemptMode: "OFF",
+  defaultWalltime: "5:00:00", // AVOID — above typical backfill threshold
+  recommendedWalltime: "2:59:00", // just under typical backfill threshold
   maxSubmissions: 10000,
 } as const;
 
@@ -518,8 +530,16 @@ interface SSHClient {
   exec(command: string): Promise<string>;
   execBatch(commands: string[], delimiter?: string): Promise<string[]>;
   writeFile(remotePath: string, content: string): Promise<void>;
-  rsync(localPath: string, remotePath: string, options?: RsyncOptions): Promise<void>;
-  tunnel(localPort: number, remoteHost: string, remotePort: number): Promise<ChildProcess>;
+  rsync(
+    localPath: string,
+    remotePath: string,
+    options?: RsyncOptions,
+  ): Promise<void>;
+  tunnel(
+    localPort: number,
+    remoteHost: string,
+    remotePort: number,
+  ): Promise<ChildProcess>;
   isConnected(): Promise<boolean>;
 }
 ```
@@ -721,7 +741,10 @@ Each strategy is a valid way to fulfill the request:
 - Interactive partition (if <=2 GPUs and <=12hr)
 
 ```typescript
-function generateStrategies(request: UserRequest, state: SystemState): Strategy[] {
+function generateStrategies(
+  request: UserRequest,
+  state: SystemState,
+): Strategy[] {
   const strategies: Strategy[] = [];
   const backfillWindows = state.backfillWindows;
 
@@ -731,9 +754,19 @@ function generateStrategies(request: UserRequest, state: SystemState): Strategy[
     const backfillCeiling = backfillWindows[gpu.partition];
 
     if (backfillCeiling && request.timeSeconds <= backfillCeiling) {
-      strategies.push({ partition: gpu.partition, gres: gpu.gres, time: request.time, backfill: true });
+      strategies.push({
+        partition: gpu.partition,
+        gres: gpu.gres,
+        time: request.time,
+        backfill: true,
+      });
     } else if (backfillCeiling) {
-      strategies.push({ partition: gpu.partition, gres: gpu.gres, time: backfillCeiling, checkpointRestart: true });
+      strategies.push({
+        partition: gpu.partition,
+        gres: gpu.gres,
+        time: backfillCeiling,
+        checkpointRestart: true,
+      });
     }
 
     if (request.gpuCount >= 4 && request.gpuCount <= gpu.perNode) {
@@ -742,11 +775,18 @@ function generateStrategies(request: UserRequest, state: SystemState): Strategy[
   }
 
   if (request.gpuCount === 1 && (request.vramMin ?? 80) <= 10) {
-    strategies.push({ partition: 'gpu-mig', gres: 'gpu:1g.10gb:1', free: true });
+    strategies.push({
+      partition: "gpu-mig",
+      gres: "gpu:1g.10gb:1",
+      free: true,
+    });
   }
 
   if (request.gpuCount <= 2 && request.timeSeconds <= 12 * 3600) {
-    strategies.push({ partition: 'interactive-rtx3090', gres: `gpu:rtx3090:${request.gpuCount}` });
+    strategies.push({
+      partition: "interactive-rtx3090",
+      gres: `gpu:rtx3090:${request.gpuCount}`,
+    });
   }
 
   return rankAndPrune(strategies);
@@ -833,6 +873,7 @@ rv ps --json             # structured output
 ```
 
 Output:
+
 ```
 ID        Name          GPUs      Node           Status   Time      Left
 9531337   train-grpo    4xA6000   udc-an38-9     RUNNING  1:23:00   1:36:00
@@ -871,6 +912,7 @@ rv ssh --config          # print SSH config entry for VS Code / Cursor
 ```
 
 For `--config`, output:
+
 ```
 Host rv-compute
     HostName udc-an38-9
@@ -954,6 +996,7 @@ rv env rm WANDB_API_KEY              # remove
 Secrets stored encrypted in `~/.rv/secrets.json` (Node.js `crypto`, key from SSH key fingerprint).
 
 At job submission:
+
 1. Write all env vars to `/scratch/<user>/.rv/env/<jobid>.env` via SSH
 2. Slurm script sources it then deletes it
 3. `srun --export=ALL` propagates to all nodes
@@ -965,6 +1008,7 @@ rv cost --gpu 4 --type a100 --time 24h
 ```
 
 Output:
+
 ```
 Estimated cost: 4 x A100-80 x 24h = 48,854 SUs
 Balance after: 8,691,798 / 8,742,210 SUs (99.4%)
@@ -1024,6 +1068,7 @@ rv notify history                     # recent notifications (stored locally in 
 ```
 
 Setup flow:
+
 1. Generate a unique notification token, store in `~/.rv/config.toml`
 2. Ask for email address
 3. Register token + email with the Vercel API
@@ -1043,6 +1088,7 @@ Setup flow:
 **Goal:** The Next.js site at `rivanna.dev`.
 
 **Design:** Mirror the design language from `~/all/uvacompute/apps/site`:
+
 - Same font family
 - Same color palette / theme
 - Same layout patterns
@@ -1065,6 +1111,7 @@ Setup flow:
 **Install script (`public/install.sh`):**
 
 Mirror `~/all/uvacompute/apps/site/public/install.sh`:
+
 - Detect platform (linux-x64, darwin-arm64/x64)
 - Download binary from `https://rivanna.dev/api/downloads/cli/latest/<platform>`
 - Install to `~/.local/bin/rv`
@@ -1156,6 +1203,7 @@ When `rv up --run train.py` is used from a local project directory:
 3. Workspace persists on `/scratch` for 90 days
 
 The Slurm script handles dependency setup:
+
 ```bash
 module load cuda/12.8.0 miniforge/24.11.3-py3.12
 if [ -f pyproject.toml ]; then
