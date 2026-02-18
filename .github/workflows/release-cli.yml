@@ -1,0 +1,144 @@
+name: Release CLI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: "Version bump type"
+        required: false
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+        default: "none"
+      custom_version:
+        description: "Custom version (e.g., 1.2.3) - leave empty to use version_type"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine new version
+        id: version
+        run: |
+          cd apps/cli
+          CURRENT_VERSION=$(cat package.json | jq -r '.version')
+          echo "Current version: $CURRENT_VERSION"
+
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            NEW_VERSION="${{ inputs.custom_version }}"
+            echo "Using custom version: $NEW_VERSION"
+          elif [ "${{ inputs.version_type }}" != "none" ]; then
+            IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+            case "${{ inputs.version_type }}" in
+              major)
+                NEW_VERSION="$((major + 1)).0.0"
+                ;;
+              minor)
+                NEW_VERSION="${major}.$((minor + 1)).0"
+                ;;
+              patch)
+                NEW_VERSION="${major}.${minor}.$((patch + 1))"
+                ;;
+            esac
+            echo "Bumping ${{ inputs.version_type }}: $NEW_VERSION"
+          else
+            echo "Error: Must specify either custom_version or version_type"
+            exit 1
+          fi
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update package.json
+        run: |
+          cd apps/cli
+          jq '.version = "${{ steps.version.outputs.new_version }}"' package.json > package.json.tmp
+          mv package.json.tmp package.json
+          cat package.json
+
+      - name: Commit version bump
+        run: |
+          git add apps/cli/package.json
+          git commit -m "chore(cli): bump version to ${{ steps.version.outputs.new_version }}"
+          git tag "cli-v${{ steps.version.outputs.new_version }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "cli-v${{ steps.version.outputs.new_version }}"
+
+  build:
+    needs: release
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            artifact: rv-linux
+          - os: macos-latest
+            target: darwin-arm64
+            artifact: rv-macos
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cli-v${{ needs.release.outputs.version }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: ./apps/cli
+
+      - name: Build binary
+        run: bun build --compile --define process.env.NODE_ENV='"production"' ./index.ts --outfile ./dist/${{ matrix.artifact }}
+        working-directory: ./apps/cli
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ./apps/cli/dist/${{ matrix.artifact }}
+          retention-days: 1
+
+  create-release:
+    needs: [release, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cli-v${{ needs.release.outputs.version }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./dist
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cli-v${{ needs.release.outputs.version }}
+          name: CLI v${{ needs.release.outputs.version }}
+          files: |
+            ./dist/rv-linux/rv-linux
+            ./dist/rv-macos/rv-macos
+          generate_release_notes: true
