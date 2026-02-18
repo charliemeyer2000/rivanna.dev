@@ -1,0 +1,25 @@
+{
+  "name": "rivanna.dev",
+  "version": "1.0.0",
+  "private": true,
+  "description": "rv - effortless GPU computing on UVA's Rivanna cluster",
+  "scripts": {
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "dev": "turbo dev",
+    "dev:cli": "turbo dev --filter=rivanna-cli",
+    "dev:site": "turbo dev --filter=site",
+    "check-types": "turbo check-types",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "**/*": "prettier --write --ignore-unknown"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.5"
+  }
+}

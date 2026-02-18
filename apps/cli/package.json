@@ -1,0 +1,25 @@
+{
+  "name": "rivanna-cli",
+  "version": "0.0.1",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "bun build index.ts --target=node --outdir ./dist",
+    "build:prod": "bun build --target=node --define process.env.NODE_ENV='\"production\"' index.ts --outdir ./dist",
+    "build-binary": "bun build --compile ./index.ts --outfile ./dist/rv",
+    "build-binary:prod": "bun build --compile --define process.env.NODE_ENV='\"production\"' ./index.ts --outfile ./dist/rv",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.10.0",
+    "@rivanna/shared": "workspace:*",
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "ora": "^8.2.0",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
