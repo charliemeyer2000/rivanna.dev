@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-BASE_URL="https://rivanna.dev"
+BASE_URL="https://www.rivanna.dev"
 BINARY_NAME="rv"
 TARGET_DIR="${HOME}/.local/bin"
 
