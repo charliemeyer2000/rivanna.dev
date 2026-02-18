@@ -218,6 +218,28 @@ export interface AllocationOutcome {
   allocationTimeMs: number;
 }
 
+// --- Port forward tracking ---
+
+export interface ForwardEntry {
+  pid: number;
+  jobId: string;
+  localPort: number;
+  remotePort: number;
+  node: string;
+  startedAt: string; // ISO 8601
+}
+
+// --- Status dashboard ---
+
+export interface GPUAvailabilitySummary {
+  gpuType: GPUType;
+  partition: string;
+  totalGPUs: number;
+  availableGPUs: number;
+  utilizationPercent: number;
+  suPerGPUHour: number;
+}
+
 // --- Config types ---
 
 export interface RvConfig {
@@ -231,6 +253,7 @@ export interface RvConfig {
     gpu_type: string;
     time: string;
     partition: string;
+    ai_naming?: boolean;
   };
   paths: {
     scratch: string;

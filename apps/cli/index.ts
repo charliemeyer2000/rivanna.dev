@@ -5,6 +5,13 @@ import { registerRunCommand } from "./src/commands/run.ts";
 import { registerPsCommand } from "./src/commands/ps.ts";
 import { registerStopCommand } from "./src/commands/stop.ts";
 import { registerAttachCommand } from "./src/commands/attach.ts";
+import { registerSshCommand } from "./src/commands/ssh-cmd.ts";
+import { registerLogsCommand } from "./src/commands/logs.ts";
+import { registerStatusCommand } from "./src/commands/status.ts";
+import { registerSyncCommand } from "./src/commands/sync.ts";
+import { registerForwardCommand } from "./src/commands/forward.ts";
+import { registerEnvCommand } from "./src/commands/env.ts";
+import { registerCostCommand } from "./src/commands/cost.ts";
 
 const pkg = require("./package.json");
 
@@ -22,6 +29,13 @@ async function main() {
   registerPsCommand(program);
   registerStopCommand(program);
   registerAttachCommand(program);
+  registerSshCommand(program);
+  registerLogsCommand(program);
+  registerStatusCommand(program);
+  registerSyncCommand(program);
+  registerForwardCommand(program);
+  registerEnvCommand(program);
+  registerCostCommand(program);
 
   program.parse(process.argv);
 }

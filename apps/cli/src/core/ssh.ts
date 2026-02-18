@@ -4,6 +4,7 @@ import { SSHConnectionError, SSHTimeoutError, VPNError } from "@/lib/errors.ts";
 
 export interface RsyncOptions {
   exclude?: string[];
+  filters?: string[];
   delete?: boolean;
   dryRun?: boolean;
 }
@@ -137,6 +138,11 @@ export class SSHClient {
 
     if (options?.delete) args.push("--delete");
     if (options?.dryRun) args.push("--dry-run");
+    if (options?.filters) {
+      for (const filter of options.filters) {
+        args.push("--filter", filter);
+      }
+    }
     if (options?.exclude) {
       for (const pattern of options.exclude) {
         args.push("--exclude", pattern);
@@ -152,6 +158,40 @@ export class SSHClient {
 
     if (exitCode !== 0) {
       throw new SSHConnectionError(`rsync failed with exit code ${exitCode}`);
+    }
+  }
+
+  async rsyncPull(
+    remotePath: string,
+    localPath: string,
+    options?: RsyncOptions,
+  ): Promise<void> {
+    const args = ["rsync", "-avz", "--progress", "-e", "ssh -o BatchMode=yes"];
+
+    if (options?.delete) args.push("--delete");
+    if (options?.dryRun) args.push("--dry-run");
+    if (options?.filters) {
+      for (const filter of options.filters) {
+        args.push("--filter", filter);
+      }
+    }
+    if (options?.exclude) {
+      for (const pattern of options.exclude) {
+        args.push("--exclude", pattern);
+      }
+    }
+
+    args.push(`${this.target}:${remotePath}`, localPath);
+
+    const proc = Bun.spawn(args, {
+      stdio: ["inherit", "inherit", "inherit"],
+    });
+    const exitCode = await proc.exited;
+
+    if (exitCode !== 0) {
+      throw new SSHConnectionError(
+        `rsync pull failed with exit code ${exitCode}`,
+      );
     }
   }
 

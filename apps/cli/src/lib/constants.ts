@@ -45,3 +45,45 @@ export const DEFAULT_MODULES = ["cuda/12.8.0", "miniforge/24.11.3-py3.12"];
 
 // Notification webhook URL
 export const NOTIFY_URL = "https://www.rivanna.dev/api/notify";
+
+// Local state files
+export const ENV_FILE = join(RV_DIR, "env.json");
+export const FORWARDS_FILE = join(RV_DIR, "forwards.json");
+
+// Default sync exclusion patterns
+export const DEFAULT_SYNC_EXCLUDES = [
+  "*.bin",
+  "*.safetensors",
+  "*.gguf",
+  "*.pt",
+  "*.pth",
+  "__pycache__/",
+  "node_modules/",
+  ".git/",
+];
+
+// Well-known ports for auto-detect
+export const WELL_KNOWN_PORTS: Record<string, number> = {
+  ray: 8265,
+  jupyter: 8888,
+  tensorboard: 6006,
+  vllm: 8000,
+  gradio: 7860,
+};
+
+// GPU type aliases (user-friendly names → canonical GPUType)
+export const GPU_TYPE_ALIASES: Record<
+  string,
+  import("@rivanna/shared").GPUType
+> = {
+  a100: "a100_80",
+  "a100-80": "a100_80",
+  "a100-40": "a100_40",
+  a6000: "a6000",
+  a40: "a40",
+  v100: "v100",
+  h200: "h200",
+  rtx3090: "rtx3090",
+  "3090": "rtx3090",
+  mig: "mig",
+};

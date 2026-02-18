@@ -691,13 +691,18 @@ export async function submitStrategies(
   slurm: SlurmClient,
   strategies: Strategy[],
   request: UserRequest,
+  envVars?: Record<string, string>,
 ): Promise<StrategySubmission[]> {
   const submissions: StrategySubmission[] = [];
+  const hasEnvVars = envVars && Object.keys(envVars).length > 0;
 
   const results = await Promise.allSettled(
     strategies.map(async (strategy) => {
       const script = buildScript(strategy, request);
       const jobId = await slurm.submitJob(script);
+      if (hasEnvVars) {
+        await slurm.writeEnvFile(jobId, envVars);
+      }
       return { strategy, jobId };
     }),
   );

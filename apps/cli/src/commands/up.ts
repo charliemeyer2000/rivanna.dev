@@ -8,19 +8,10 @@ import {
 } from "@/core/allocator.ts";
 import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-
-const GPU_TYPE_ALIASES: Record<string, GPUType> = {
-  a100: "a100_80",
-  "a100-80": "a100_80",
-  "a100-40": "a100_40",
-  a6000: "a6000",
-  a40: "a40",
-  v100: "v100",
-  h200: "h200",
-  rtx3090: "rtx3090",
-  "3090": "rtx3090",
-  mig: "mig",
-};
+import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
+import { getAllEnvVars } from "@/core/env-store.ts";
+import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
+import { tailJobLogs } from "@/core/log-tailer.ts";
 
 interface UpOptions {
   gpu: string;
@@ -88,12 +79,31 @@ async function runUp(options: UpOptions) {
 
   const time = parseTime(options.time);
 
+  // Smart job naming
+  let jobName = options.name;
+  if (!jobName) {
+    jobName = generateJobName(options.run);
+    if (config.defaults.ai_naming && options.run) {
+      const envVars = getAllEnvVars();
+      const openaiKey = envVars["OPENAI_API_KEY"];
+      const anthropicKey = envVars["ANTHROPIC_API_KEY"];
+      if (openaiKey || anthropicKey) {
+        const provider = openaiKey
+          ? ("openai" as const)
+          : ("anthropic" as const);
+        const apiKey = (openaiKey ?? anthropicKey)!;
+        const aiName = await generateAIJobName(options.run, apiKey, provider);
+        if (aiName) jobName = `rv-${aiName}`;
+      }
+    }
+  }
+
   const request: UserRequest = {
     gpuCount,
     gpuType,
     totalTimeSeconds: time.seconds,
     totalTime: time.formatted,
-    jobName: options.name ?? `rv-${gpuType ?? "gpu"}`,
+    jobName,
     account: config.defaults.account,
     user: config.connection.user,
     command: options.run,
@@ -144,7 +154,13 @@ async function runUp(options: UpOptions) {
     );
   }
 
-  const submissions = await submitStrategies(slurm, result.strategies, request);
+  const envVars = getAllEnvVars();
+  const submissions = await submitStrategies(
+    slurm,
+    result.strategies,
+    request,
+    envVars,
+  );
   if (submissions.length === 0) {
     throw new Error("All strategy submissions failed.");
   }
@@ -184,8 +200,8 @@ async function runUp(options: UpOptions) {
 
   // --- Attach or stream logs ---
   if (options.run) {
-    // Batch mode: tail logs until job finishes
-    await tailJobLogs(slurm, winner, config.connection.user, isJson);
+    const logPath = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}.out`;
+    await tailJobLogs(slurm, winner.jobId, logPath);
   } else {
     // Interactive: attach shell
     console.log(theme.muted(`  Job ID: ${winner.jobId}`));
@@ -236,51 +252,4 @@ function printStrategies(
     );
   }
   console.log();
-}
-
-async function tailJobLogs(
-  slurm: import("@/core/slurm.ts").SlurmClient,
-  winner: StrategySubmission,
-  user: string,
-  _isJson: boolean,
-) {
-  const logPath = `/scratch/${user}/.rv/logs/${winner.strategy.label.split(",")[0]?.trim() ?? "rv"}-${winner.jobId}.out`;
-  let lastLineCount = 0;
-
-  console.log(theme.muted(`\n  Tailing ${logPath}...\n`));
-
-  while (true) {
-    // Check if job is still running
-    const jobs = await slurm.getJobs();
-    const job = jobs.find((j) => j.id === winner.jobId);
-
-    // Tail logs
-    const output = await slurm.sshClient
-      .exec(`wc -l < ${logPath} 2>/dev/null || echo 0`)
-      .catch(() => "0");
-    const totalLines = parseInt(output, 10);
-
-    if (totalLines > lastLineCount) {
-      const newLines = await slurm.sshClient
-        .exec(
-          `tail -n +${lastLineCount + 1} ${logPath} 2>/dev/null | head -n ${totalLines - lastLineCount}`,
-        )
-        .catch(() => "");
-      if (newLines) {
-        process.stdout.write(newLines + "\n");
-      }
-      lastLineCount = totalLines;
-    }
-
-    if (!job || (job.state !== "RUNNING" && job.state !== "PENDING")) {
-      console.log(
-        theme.muted(
-          `\n  Job ${winner.jobId} finished (${job?.state ?? "COMPLETED"}).`,
-        ),
-      );
-      break;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-  }
 }

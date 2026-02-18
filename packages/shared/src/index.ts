@@ -22,4 +22,6 @@ export type {
   StrategySubmission,
   AllocatorResult,
   AllocationOutcome,
+  ForwardEntry,
+  GPUAvailabilitySummary,
 } from "./types.ts";

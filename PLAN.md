@@ -55,13 +55,13 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 6. [Monorepo Structure](#6-monorepo-structure)
 7. [Empirical Constants](#7-empirical-constants)
 8. [Implementation Phases](#8-implementation-phases)
-   - [Phase 1: Monorepo Scaffold](#phase-1-monorepo-scaffold)
-   - [Phase 2: Shared Package](#phase-2-shared-package)
-   - [Phase 3: CLI Foundation — SSH, Config, Init](#phase-3-cli-foundation--ssh-config-init)
-   - [Phase 4: Slurm Parsers & Templates](#phase-4-slurm-parsers--templates)
-   - [Phase 5: The Allocator Brain](#phase-5-the-allocator-brain)
-   - [Phase 6: Core Commands — up, run, ps, stop, attach](#phase-6-core-commands--up-run-ps-stop-attach)
-   - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost)
+   - [Phase 1: Monorepo Scaffold](#phase-1-monorepo-scaffold) ✅
+   - [Phase 2: Shared Package](#phase-2-shared-package) ✅
+   - [Phase 3: CLI Foundation — SSH, Config, Init](#phase-3-cli-foundation--ssh-config-init) ✅
+   - [Phase 4: Slurm Parsers & Templates](#phase-4-slurm-parsers--templates) ✅
+   - [Phase 5: The Allocator Brain](#phase-5-the-allocator-brain) ✅
+   - [Phase 6: Core Commands — up, run, ps, stop, attach](#phase-6-core-commands--up-run-ps-stop-attach) ✅
+   - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ← **next**
    - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email)
    - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api)
    - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline)
@@ -479,7 +479,7 @@ Each phase below is designed to be one Claude Code plan-mode session. They are o
 
 ---
 
-### Phase 1: Monorepo Scaffold
+### Phase 1: Monorepo Scaffold ✅
 
 **Goal:** Empty but fully functional monorepo with all tooling configured. Every package can be built and the site can `dev`.
 
@@ -500,7 +500,7 @@ Each phase below is designed to be one Claude Code plan-mode session. They are o
 
 ---
 
-### Phase 2: Shared Package
+### Phase 2: Shared Package ✅
 
 **Goal:** `packages/shared` with all types, GPU specs, and constants that both CLI and site will import.
 
@@ -521,7 +521,7 @@ Each phase below is designed to be one Claude Code plan-mode session. They are o
 
 ---
 
-### Phase 3: CLI Foundation — SSH, Config, Init
+### Phase 3: CLI Foundation — SSH, Config, Init ✅
 
 **Goal:** The SSH layer, config system, and `rv init` command working end-to-end.
 
@@ -623,7 +623,7 @@ Interactive first-time setup:
 
 ---
 
-### Phase 4: Slurm Parsers & Templates
+### Phase 4: Slurm Parsers & Templates ✅
 
 **Goal:** All Slurm output parsers and job script template generators.
 
@@ -707,7 +707,7 @@ fi
 
 ---
 
-### Phase 5: The Allocator Brain
+### Phase 5: The Allocator Brain ✅
 
 **Goal:** The most important code in the project. `src/core/allocator.ts`.
 
@@ -813,7 +813,7 @@ function generateStrategies(
 
 ---
 
-### Phase 6: Core Commands — up, run, ps, stop, attach
+### Phase 6: Core Commands — up, run, ps, stop, attach ✅
 
 **Goal:** The five most important commands working end-to-end.
 
