@@ -251,11 +251,13 @@ async function runUp(options: UpOptions) {
     await tailJobLogs(slurm, winner.jobId, logPath);
 
     // Post-job summary with actionable commands
+    const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
     console.log(theme.muted("\n  Files on Rivanna:"));
     if (workDir) {
-      console.log(theme.muted(`    Workspace:   ${workDir}`));
+      console.log(theme.muted(`    Workspace:    ${workDir}`));
     }
-    console.log(theme.muted(`    Logs:        ${logPath}`));
+    console.log(theme.muted(`    Logs:         ${logPath}`));
+    console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
     console.log();
     if (workDir) {
       console.log(theme.muted(`  rv sync pull ${workDir} .`));

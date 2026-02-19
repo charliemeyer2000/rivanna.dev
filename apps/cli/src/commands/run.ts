@@ -196,11 +196,13 @@ async function runRun(commandParts: string[], options: RunOptions) {
 
   // Post-job summary with actionable commands
   if (!isJson) {
+    const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
     console.log(theme.muted("\n  Files on Rivanna:"));
     if (execution?.workDir) {
-      console.log(theme.muted(`    Workspace:   ${execution.workDir}`));
+      console.log(theme.muted(`    Workspace:    ${execution.workDir}`));
     }
-    console.log(theme.muted(`    Logs:        ${logPath}`));
+    console.log(theme.muted(`    Logs:         ${logPath}`));
+    console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
     console.log();
     if (execution?.workDir) {
       console.log(theme.muted(`  rv sync pull ${execution.workDir} .`));
