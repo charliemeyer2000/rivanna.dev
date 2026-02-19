@@ -51,7 +51,7 @@ export function generateCheckpointScript(opts: TemplateOptions): string {
   );
   lines.push(`  export RV_TOTAL_ELAPSED=$NEW_TOTAL`);
   lines.push(`  sbatch --export=ALL,RV_TOTAL_ELAPSED=$NEW_TOTAL $0`);
-  if (opts.notifyUrl && opts.notifyToken) {
+  if (opts.notifyUrl) {
     lines.push(`  _rv_notify RESUBMITTED`);
   }
   lines.push(`else`);

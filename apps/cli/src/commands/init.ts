@@ -445,8 +445,8 @@ async function runInit(options: { force?: boolean }) {
     },
     paths: { scratch: `/scratch/${user}`, home: `/home/${user}` },
     notifications: existingConfig?.notifications ?? {
-      enabled: false,
-      email: "",
+      enabled: true,
+      email: `${user}@virginia.edu`,
     },
   };
   // Always update connection + paths in case user changed them (--force)
@@ -611,6 +611,11 @@ async function runInit(options: { force?: boolean }) {
   console.log(theme.muted(`  User: ${user}`));
   console.log(theme.muted(`  Host: ${SSH_HOST_ALIAS} (${hostname})`));
   console.log(theme.muted(`  Account: ${account}`));
+  console.log(
+    theme.muted(
+      `  Notifications: ${config.notifications.enabled ? config.notifications.email : "disabled"}`,
+    ),
+  );
   console.log(theme.muted(`  Config: ~/.rv/config.toml\n`));
   console.log(theme.accent("  Try: rv status\n"));
 }

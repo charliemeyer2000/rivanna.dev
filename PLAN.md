@@ -50,6 +50,9 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-18: SSH key detection should check id_ed25519, id_rsa, id_ecdsa, id_ecdsa_sk, id_ed25519_sk — not just ed25519.
 - 2026-02-18: `testKeyAuth()` with BatchMode=yes tests auth without password prompt. Use before `ssh-copy-id` to skip if already authorized.
 - 2026-02-18: Slurm batch scripts always source `.bashrc` (bash). Write cache env exports to `.bashrc` regardless of user's login shell.
+- 2026-02-18: Notifications use HMAC-SHA256 via `openssl dgst` in bash — available on all Rivanna nodes. No Bearer token needed.
+- 2026-02-18: Computing IDs match `/^[a-z]{2,3}\d[a-z]{2,3}$/` (e.g., abs6bd, cm7jk, tqf5qb). Map directly to `@virginia.edu` email.
+- 2026-02-18: Template guard for notifications changed from `(notifyUrl && notifyToken)` to just `(notifyUrl)`. notifyToken field kept in types but unused.
 
 ---
 
@@ -71,8 +74,8 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
    - [Phase 6: Core Commands — up, run, ps, stop, attach](#phase-6-core-commands--up-run-ps-stop-attach) ✅
    - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ✅
    - [Phase 7.5: Smart Execution, GPU Verification, Init Hardening](#phase-75-smart-execution-gpu-verification-init-hardening) ✅
-   - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email) ← **next**
-   - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api)
+   - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email) ✅
+   - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api) ← **next**
    - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline) ✅
    - [Phase 11: Testing & Hardening](#phase-11-testing--hardening)
 
@@ -222,11 +225,11 @@ vc env ls
 
 Required environment variables:
 
-| Variable              | Environments            | Purpose                                          |
-| --------------------- | ----------------------- | ------------------------------------------------ |
-| `RESEND_API_KEY`      | production, development | Send email notifications via Resend              |
-| `GITHUB_TOKEN`        | production              | Proxy GitHub Release binaries for install script |
-| `NOTIFICATION_SECRET` | production, development | Verify notification tokens from CLI              |
+| Variable             | Environments            | Purpose                                          |
+| -------------------- | ----------------------- | ------------------------------------------------ |
+| `RESEND_API_KEY`     | production, development | Send email notifications via Resend              |
+| `GITHUB_TOKEN`       | production              | Proxy GitHub Release binaries for install script |
+| `NOTIFY_HMAC_SECRET` | production, development | HMAC verification of notification requests       |
 
 ### CI/CD
 
@@ -1052,70 +1055,25 @@ Balance after: 8,691,798 / 8,742,210 SUs (99.4%)
 
 ---
 
-### Phase 8: Notifications — Resend Email
+### Phase 8: Notifications — Resend Email ✅
 
-**Goal:** Email notifications for job events via Resend.
+**Goal:** Email notifications for job events via Resend. No signup required.
 
 **Architecture:**
 
 ```
-Slurm job (compute node) --curl--> rivanna.dev/api/notify (Vercel) --Resend--> user's email
+Slurm job (compute node) --curl (HMAC-signed)--> rivanna.dev/api/notify (Vercel) --Resend--> user@virginia.edu
 ```
 
-**Slurm script injection:**
+**Completed work:**
 
-Every rv-generated Slurm script includes:
-
-```bash
-RV_NOTIFY_URL="https://rivanna.dev/api/notify"
-RV_NOTIFY_TOKEN="rvt_<token>"
-
-_rv_notify() {
-  local event=$1
-  curl -sf -X POST "$RV_NOTIFY_URL" \
-    -H "Authorization: Bearer $RV_NOTIFY_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"user\": \"$USER\",
-      \"jobId\": \"$SLURM_JOB_ID\",
-      \"jobName\": \"$SLURM_JOB_NAME\",
-      \"event\": \"$event\",
-      \"node\": \"$(hostname)\",
-      \"timestamp\": \"$(date -Iseconds)\"
-    }" 2>/dev/null &
-}
-trap '_rv_notify FAILED' ERR
-```
-
-**Vercel API endpoint (`apps/site/app/api/notify/route.ts`):**
-
-- Receives job events: STARTED, COMPLETED, FAILED, RESUBMITTED
-- Verifies notification token against `NOTIFICATION_SECRET` env var
-- Sends email via Resend API (use `resend` npm package)
-- Email content: job name, event type, node, timestamp, formatted nicely
-- From address: `notifications@rivanna.dev` (configure in Resend dashboard)
-
-**`rv notify` command:**
-
-```
-rv notify setup                       # interactive setup
-rv notify test                        # send test notification
-rv notify history                     # recent notifications (stored locally in ~/.rv/notify-history.json)
-```
-
-Setup flow:
-
-1. Generate a unique notification token, store in `~/.rv/config.toml`
-2. Ask for email address
-3. Register token + email with the Vercel API
-4. Send test email
-5. Store config:
-   ```toml
-   [notifications]
-   enabled = true
-   email = "user@virginia.edu"
-   token = "rvt_..."
-   ```
+1. **HMAC-signed notification hook** (`templates/base.ts`): Slurm scripts compute `HMAC-SHA256(secret, "user:jobId:event:epoch")` via `openssl dgst` and include the signature in the POST. No Bearer token needed.
+2. **`/api/notify` route** (`apps/site/src/app/api/notify/route.ts`): Verifies HMAC signature, validates computing ID format (`/^[a-z]{2,3}\d[a-z]{2,3}$/`), enforces 10-minute timestamp window (anti-replay), rate limits 20 emails/user/hour, sends HTML email via Resend to `{computingId}@virginia.edu`.
+3. **Fixed notification bugs**: `up.ts` had `notifyUrl: config.notifications.enabled ? undefined : undefined` (always undefined). `run.ts` was missing `notifyUrl` entirely. Both now use `NOTIFY_URL` constant.
+4. **Notifications enabled by default** (`init.ts`): New users get `notifications.enabled = true`, `email = "{user}@virginia.edu"`. Existing users unaffected until `rv init --force`.
+5. **Email events**: STARTED (blue), COMPLETED (green), FAILED (red), RESUBMITTED (amber). Clean HTML emails with job ID, node, timestamp.
+6. **No signup required**: Email derived from computing ID. No user database, no registration endpoint. Shared HMAC secret prevents unauthenticated access.
+7. **From address**: `rv <noreply@rivanna.dev>` via Resend (domain verification required).
 
 ---
 
@@ -1189,7 +1147,7 @@ Mirror `~/all/uvacompute/.github/workflows/release-cli.yaml`:
 # One-time setup for Vercel env vars
 vc env add RESEND_API_KEY          # for email notifications
 vc env add GITHUB_TOKEN            # for proxying release binaries
-vc env add NOTIFICATION_SECRET     # for verifying notification tokens
+vc env add NOTIFY_HMAC_SECRET      # for HMAC verification of notification requests
 
 # Pull for local dev
 vc env pull .env.local

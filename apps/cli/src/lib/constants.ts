@@ -45,6 +45,7 @@ export const DEFAULT_MODULES = ["cuda/12.8.0", "miniforge/24.11.3-py3.12"];
 
 // Notification webhook URL
 export const NOTIFY_URL = "https://www.rivanna.dev/api/notify";
+export const NOTIFY_SECRET = "rv-hmac-9f3a7c2e1b";
 
 // Local state files
 export const ENV_FILE = join(RV_DIR, "env.json");

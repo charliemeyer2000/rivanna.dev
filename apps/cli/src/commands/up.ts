@@ -10,7 +10,7 @@ import {
 } from "@/core/allocator.ts";
 import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
+import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
@@ -137,8 +137,7 @@ async function runUp(options: UpOptions) {
     workDir,
     venvPath,
     mem: options.mem,
-    notifyUrl: config.notifications.enabled ? undefined : undefined,
-    notifyToken: config.notifications.token,
+    notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
   };
 
   // --- Allocate ---

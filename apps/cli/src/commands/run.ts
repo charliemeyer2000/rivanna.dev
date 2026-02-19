@@ -10,7 +10,7 @@ import {
 } from "@/core/allocator.ts";
 import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
+import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
@@ -116,7 +116,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     workDir: execution?.workDir,
     venvPath: execution?.venvPath ?? undefined,
     mem: options.mem,
-    notifyToken: config.notifications.token,
+    notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
   };
 
   const spinner = isJson ? null : ora("Probing cluster...").start();

@@ -1,6 +1,6 @@
 import type { TemplateOptions } from "@rivanna/shared";
 import { PATHS } from "@rivanna/shared";
-import { DEFAULT_MODULES } from "@/lib/constants.ts";
+import { DEFAULT_MODULES, NOTIFY_SECRET } from "@/lib/constants.ts";
 
 /**
  * Generate SBATCH preamble directives + environment setup.
@@ -50,15 +50,18 @@ export function generatePreamble(opts: TemplateOptions): string {
   lines.push("fi");
   lines.push("");
 
-  // Notification hook
-  if (opts.notifyUrl && opts.notifyToken) {
+  // Notification hook (HMAC-signed)
+  if (opts.notifyUrl) {
     lines.push(`# rv notification hook`);
     lines.push(`_rv_notify() {`);
+    lines.push(`  local _ep=$(date +%s)`);
+    lines.push(
+      `  local _sg=$(echo -n "\${USER}:\${SLURM_JOB_ID}:\${1}:\${_ep}" | openssl dgst -sha256 -hmac "${NOTIFY_SECRET}" | awk '{print $NF}')`,
+    );
     lines.push(`  curl -sf -X POST "${opts.notifyUrl}" \\`);
-    lines.push(`    -H "Authorization: Bearer ${opts.notifyToken}" \\`);
     lines.push(`    -H "Content-Type: application/json" \\`);
     lines.push(
-      `    -d "{\\"user\\":\\"$USER\\",\\"jobId\\":\\"$SLURM_JOB_ID\\",\\"jobName\\":\\"$SLURM_JOB_NAME\\",\\"event\\":\\"$1\\",\\"node\\":\\"$(hostname)\\",\\"timestamp\\":\\"$(date -Iseconds)\\"}" 2>/dev/null &`,
+      `    -d "{\\"user\\":\\"$USER\\",\\"jobId\\":\\"$SLURM_JOB_ID\\",\\"jobName\\":\\"$SLURM_JOB_NAME\\",\\"event\\":\\"$1\\",\\"node\\":\\"$(hostname)\\",\\"ts\\":\\"$(date -Iseconds)\\",\\"epoch\\":\${_ep},\\"sig\\":\\"\${_sg}\\"}" 2>/dev/null &`,
     );
     lines.push(`}`);
     lines.push(`trap '_rv_notify FAILED' ERR`);
@@ -101,6 +104,6 @@ export function generatePreamble(opts: TemplateOptions): string {
  * Generate the completion notification call (for end of script).
  */
 export function generateCompletionNotify(opts: TemplateOptions): string {
-  if (!opts.notifyUrl || !opts.notifyToken) return "";
+  if (!opts.notifyUrl) return "";
   return "\n_rv_notify COMPLETED\n";
 }
