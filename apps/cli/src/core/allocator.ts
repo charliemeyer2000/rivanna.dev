@@ -11,7 +11,7 @@ import type {
   JobState,
   TemplateOptions,
 } from "@rivanna/shared";
-import { GPU_SPECS } from "@rivanna/shared";
+import { GPU_SPECS, PATHS } from "@rivanna/shared";
 import type { SlurmClient } from "./slurm.ts";
 import type { SSHClient } from "./ssh.ts";
 import {
@@ -36,9 +36,9 @@ const COARSE_PROBES_SECONDS = [
 const REFINE_STEP_SECONDS = 900; // 15 minutes
 const MAX_STRATEGIES = 16;
 const BACKFILL_THRESHOLD_SECONDS = 300; // 5 minutes
-const INITIAL_POLL_MS = 2000;
-const MAX_POLL_MS = 10_000;
-const POLL_BACKOFF = 1.5;
+const INITIAL_POLL_MS = 1000;
+const MAX_POLL_MS = 5000;
+const POLL_BACKOFF = 1.3;
 const MAX_POLL_DURATION_MS = 7_200_000; // 2 hours
 
 // --------------- Helpers ---------------
@@ -785,6 +785,27 @@ export async function submitStrategies(
 }
 
 /**
+ * Fetch the last few lines of a job's stderr log to show why it failed.
+ */
+async function fetchJobErrorLog(
+  ssh: SSHClient,
+  user: string,
+  jobId: string,
+): Promise<string | null> {
+  try {
+    const logDir = PATHS.logs(user);
+    // Job log pattern: {jobName}-{jobId}.err — we don't know the name,
+    // so glob for any file ending in -{jobId}.err
+    const content = await ssh.exec(
+      `tail -n 20 ${logDir}/*-${jobId}.err 2>/dev/null || true`,
+    );
+    return content.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Poll squeue until first submission reaches RUNNING. Cancel all others.
  */
 export async function monitorAllocation(
@@ -826,26 +847,31 @@ export async function monitorAllocation(
 
     // Check for jobs that vanished from squeue (could be completed or failed).
     // Fast jobs may go PENDING → RUNNING → COMPLETED between polls.
-    // Note: sacct has a lag — records may not appear immediately after completion.
+    // sacct has an accounting lag — retry a few times with short delays.
     const vanished = Array.from(submissionMap.values()).filter(
       (s) =>
         (s.state === "PENDING" || s.state === "RUNNING") &&
         !jobs.some((j) => j.id === s.jobId),
     );
     if (vanished.length > 0) {
-      const history = await slurm.getJobHistory("now-1hour");
-      for (const sub of vanished) {
-        const record = history.find((h) => h.id === sub.jobId);
-        if (record?.state === "COMPLETED") {
-          sub.state = "COMPLETED";
-          if (record.nodes) sub.nodes = [record.nodes];
-          if (!winner) winner = sub;
-        } else if (record) {
-          // sacct has a record with a terminal state (FAILED, CANCELLED, etc.)
-          sub.state = "FAILED";
+      const unresolved = new Set(vanished.map((s) => s.jobId));
+      // Retry sacct up to 5 times with 2s gaps to handle accounting lag
+      for (let attempt = 0; attempt < 5 && unresolved.size > 0; attempt++) {
+        if (attempt > 0) await sleep(2000);
+        const history = await slurm.getJobHistory("now-1hour");
+        for (const sub of vanished) {
+          if (!unresolved.has(sub.jobId)) continue;
+          const record = history.find((h) => h.id === sub.jobId);
+          if (record?.state === "COMPLETED") {
+            sub.state = "COMPLETED";
+            if (record.nodes) sub.nodes = [record.nodes];
+            if (!winner) winner = sub;
+            unresolved.delete(sub.jobId);
+          } else if (record) {
+            sub.state = "FAILED";
+            unresolved.delete(sub.jobId);
+          }
         }
-        // If no sacct record yet (accounting lag), leave state unchanged
-        // so the next poll can check again.
       }
     }
 
@@ -875,9 +901,20 @@ export async function monitorAllocation(
       (s) => s.state !== "PENDING" && s.state !== "RUNNING",
     );
     if (allDead) {
-      throw new AllocatorError(
-        "All strategy submissions failed or were cancelled.",
+      // Fetch error logs from failed jobs to show the user what went wrong
+      const failed = Array.from(submissionMap.values()).filter(
+        (s) => s.state === "FAILED",
       );
+      let detail = "";
+      if (failed.length > 0) {
+        const errLog = await fetchJobErrorLog(
+          slurm.sshClient,
+          slurm.username,
+          failed[0]!.jobId,
+        );
+        if (errLog) detail = `\n\n${errLog}`;
+      }
+      throw new AllocatorError(`All strategy submissions failed.${detail}`);
     }
 
     await sleep(pollInterval);

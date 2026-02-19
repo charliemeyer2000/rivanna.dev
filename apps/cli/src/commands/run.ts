@@ -15,6 +15,7 @@ import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
 import { prepareExecution } from "@/core/project.ts";
+import { shellJoin } from "@/lib/shell-quote.ts";
 
 interface RunOptions {
   gpu: string;
@@ -88,13 +89,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
   );
   prepSpinner?.stop();
 
-  const command = execution
-    ? execution.command
-    : commandParts
-        .map((p) =>
-          /[^a-zA-Z0-9_./:=@-]/.test(p) ? `"${p.replace(/"/g, '\\"')}"` : p,
-        )
-        .join(" ");
+  const command = execution ? execution.command : shellJoin(commandParts);
 
   // Smart job naming
   let jobName = options.name;

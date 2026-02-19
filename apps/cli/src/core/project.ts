@@ -3,6 +3,7 @@ import { resolve, dirname, basename, relative, extname } from "path";
 import { createHash } from "crypto";
 import type { SSHClient } from "./ssh.ts";
 import { PATHS } from "@rivanna/shared";
+import { shellQuote, shellJoin } from "@/lib/shell-quote.ts";
 import { DEFAULT_SYNC_EXCLUDES, DEFAULT_MODULES } from "@/lib/constants.ts";
 import type { Ora } from "ora";
 
@@ -195,11 +196,12 @@ async function ensureVenv(ssh: SSHClient, project: ProjectInfo): Promise<void> {
  */
 function buildRemoteCommand(entrypoint: string, args: string[]): string {
   const ext = extname(entrypoint).toLowerCase();
-  const argsStr = args.length > 0 ? " " + args.join(" ") : "";
+  const quotedEntry = shellQuote(entrypoint);
+  const argsStr = args.length > 0 ? " " + shellJoin(args) : "";
 
-  if (ext === ".py") return `python ${entrypoint}${argsStr}`;
-  if (ext === ".sh" || ext === ".bash") return `bash ${entrypoint}${argsStr}`;
-  return `./${entrypoint}${argsStr}`;
+  if (ext === ".py") return `python ${quotedEntry}${argsStr}`;
+  if (ext === ".sh" || ext === ".bash") return `bash ${quotedEntry}${argsStr}`;
+  return `./${quotedEntry}${argsStr}`;
 }
 
 // --------------- Public Pipeline ---------------
@@ -258,14 +260,14 @@ export async function prepareExecution(
   // with relative entrypoint, keep trailing args
   const prefix = commandArgs.slice(0, fileArgIndex);
   const trailing = commandArgs.slice(fileArgIndex + 1);
-  const trailingStr = trailing.length > 0 ? " " + trailing.join(" ") : "";
+  const trailingStr = trailing.length > 0 ? " " + shellJoin(trailing) : "";
 
   // If there's a launcher prefix (torchrun, accelerate, etc.), use the
   // entrypoint path directly — the launcher invokes Python itself.
   // Only add `python` prefix when the file is the first arg.
   const command =
     prefix.length > 0
-      ? `${prefix.join(" ")} ${project.entrypoint}${trailingStr}`
+      ? `${shellJoin(prefix)} ${shellQuote(project.entrypoint)}${trailingStr ? " " + trailingStr : ""}`
       : buildRemoteCommand(project.entrypoint, trailing);
 
   return {
