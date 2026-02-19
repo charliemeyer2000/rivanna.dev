@@ -63,6 +63,11 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-19: GPU mismatch possible: V100 partition can allocate A6000 nodes. This is a Slurm config issue, not a CLI bug.
 - 2026-02-19: Run CLI from source with `bun apps/cli/index.ts` during dev (installed binary may be outdated; `node dist/index.js` fails with "Bun is not defined").
 - 2026-02-19: Scratch 90-day purge policy deletes untouched files. Keepalive via `find ... -exec touch -a {} +` on critical dirs, rate-limited to once/day via local timestamp file.
+- 2026-02-19: Shared HF cache on `/standard/` or `/project/` detected via `hdquota` + `parseHdquota`. `detectGroupStorage()` returns both dirs and full quota data in one SSH call.
+- 2026-02-19: When shared HF cache is active, both `~/.cache/huggingface` AND `/scratch/user/.cache/huggingface` are symlinked to shared path — frameworks that hardcode either path still work.
+- 2026-02-19: Checkpoint dir was `$SLURM_JOB_NAME` only — collides on repeated runs. Fixed to `$SLURM_JOB_NAME-$SLURM_JOB_ID` matching log file pattern.
+- 2026-02-19: `RV_CHECKPOINT_DIR` is a suggestion, not enforced. Most frameworks (HF Trainer, Lightning, VeRL/FSDP) use their own output_dir config. Document clearly so users configure their framework to use `$RV_CHECKPOINT_DIR`.
+- 2026-02-19: Post-job summary (workspace, logs, checkpoints, pull commands) solves discoverability — users know where results are without guessing remote paths.
 
 ---
 
@@ -88,6 +93,7 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
    - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api) ✅
    - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline) ✅
    - [Phase 11: Testing & Hardening](#phase-11-testing--hardening) ✅
+   - [Phase 12: Storage, Caching & Post-Job UX](#phase-12-storage-caching--post-job-ux) ✅
 
 ---
 
@@ -1210,6 +1216,68 @@ Ran 8 live tests on Rivanna (MIG, A6000, 4x A6000, V100) covering GPU sanity, vL
 
 - 8 test directories with Python scripts + requirements.txt
 - Each tests a specific CLI codepath (GPU sanity, vLLM, DDP, FSDP, multiprocess, multinode, checkpoint, MoE)
+
+---
+
+### Phase 12: Storage, Caching & Post-Job UX ✅
+
+**Goal:** Shared group storage for HuggingFace models, cache deduplication, quota awareness, and post-job result discoverability.
+
+**Completed work:**
+
+1. **Shared group storage** (`init.ts`, `config.ts`, `types.ts`):
+   - `rv init` detects `/standard/` and `/project/` group directories via `hdquota` parsing
+   - Prompts user: "Share HuggingFace model cache with your lab group?"
+   - Creates shared dir with `chmod g+rwxs` (setgid for group write)
+   - Config: `[shared] hf_cache = "/standard/mygroup/.cache/huggingface"`
+   - Threaded through full data flow: `RvConfig` → `UserRequest` → `allocator` → `TemplateOptions` → `base.ts` template
+
+2. **Cache migration & deduplication** (`init.ts`):
+   - `migrateScratchCache()`: when enabling shared storage, detects existing models in `/scratch/user/.cache/huggingface` via `du -sb`
+   - Compares cache size vs available space on shared filesystem
+   - Prompts user to migrate, rsyncs with `--ignore-existing`, removes scratch copy
+   - Handles edge cases: already-symlinked paths, empty caches, insufficient space
+
+3. **Quota awareness** (`init.ts`):
+   - Refactored `detectGroupStorage()` to use existing `parseHdquota` parser (single SSH call returns both dirs and quotas)
+   - Warns if shared filesystem >80% full with used/total/free breakdown
+   - Checks available space before migration, skips if insufficient
+
+4. **Scratch path symlink** (`init.ts` → `ensureRemoteSetup`):
+   - When shared storage is active, `/scratch/user/.cache/huggingface` is symlinked to shared path
+   - Both `~/.cache/huggingface` AND scratch path resolve to shared location
+   - Frameworks hardcoding either path still work correctly
+
+5. **Checkpoint path uniqueness** (`templates/base.ts`):
+   - Changed from `$SLURM_JOB_NAME` to `$SLURM_JOB_NAME-$SLURM_JOB_ID`
+   - Prevents collisions on repeated runs (e.g., two `rv run python train.py` → `rv-train-12345`, `rv-train-12346`)
+   - Matches log file naming pattern (`{jobName}-{jobId}.out`)
+
+6. **Post-job summary** (`run.ts`, `up.ts`):
+   - After job completes, prints: workspace path, log path, checkpoint path
+   - Shows exact `rv sync pull` and `rv logs --pull` commands
+   - Solves discoverability — users know where results landed without guessing remote paths
+
+7. **Extended keepalive** (`setup.ts`):
+   - Daily touch now also covers `/scratch/user/.rv/checkpoints` and `/scratch/user/rv-workspaces`
+   - Prevents 90-day purge from deleting checkpoints and project outputs
+   - Also touches shared HF cache dir when configured
+
+8. **Other caches stay per-user** (deliberate decision):
+   - pip, uv, vllm, ray caches are small, fast to rebuild, and risk version conflicts if shared
+   - Only HF models (10-200+ GB each) justify sharing
+
+9. **OG image & social metadata** (`apps/site`):
+   - Edge runtime OG image generator at `/api/og` (1200x630, IBM Plex Mono, orange accent)
+   - Root layout metadata with metadataBase, openGraph, twitter card
+
+10. **Documentation updates**:
+
+- Configuration page updated with shared storage, migration, and quota sections
+- Public markdown mirrors updated
+- Sidebar nav updated with new subheadings
+
+---
 
 **Code Deployment & Execution Model (for `rv up --run` and `rv sync`):**
 
