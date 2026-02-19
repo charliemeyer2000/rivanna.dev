@@ -53,6 +53,16 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-18: Notifications use HMAC-SHA256 via `openssl dgst` in bash — available on all Rivanna nodes. No Bearer token needed.
 - 2026-02-18: Computing IDs match `/^[a-z]{2,3}\d[a-z]{2,3}$/` (e.g., abs6bd, cm7jk, tqf5qb). Map directly to `@virginia.edu` email.
 - 2026-02-18: Template guard for notifications changed from `(notifyUrl && notifyToken)` to just `(notifyUrl)`. notifyToken field kept in types but unused.
+- 2026-02-19: MIG QOS strictly limits CPUs — always set `cpusPerTask=1` and cap memory at 16G.
+- 2026-02-19: Fast jobs can vanish from `squeue` between polls. Use `sacct` fallback, but account for accounting daemon lag (don't mark FAILED if no sacct record yet).
+- 2026-02-19: Smart execution must scan ALL non-flag args for local files, not just `commandArgs[0]`. Supports torchrun/accelerate/deepspeed launchers.
+- 2026-02-19: Set `OMP_NUM_THREADS=cpusPerTask` and `TOKENIZERS_PARALLELISM=false` in all templates to prevent CPU oversubscription.
+- 2026-02-19: vLLM writes torch compile cache to `~/.cache/vllm/` — set `VLLM_CACHE_DIR` to scratch.
+- 2026-02-19: Multi-node torchrun needs `NODE_RANK=$SLURM_PROCID` to discover its rank in static rendezvous.
+- 2026-02-19: Checkpoint and direct+timemin strategies serve different purposes — never let one prune the other.
+- 2026-02-19: GPU mismatch possible: V100 partition can allocate A6000 nodes. This is a Slurm config issue, not a CLI bug.
+- 2026-02-19: Run CLI from source with `bun apps/cli/index.ts` during dev (installed binary may be outdated; `node dist/index.js` fails with "Bun is not defined").
+- 2026-02-19: Scratch 90-day purge policy deletes untouched files. Keepalive via `find ... -exec touch -a {} +` on critical dirs, rate-limited to once/day via local timestamp file.
 
 ---
 
@@ -75,9 +85,9 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
    - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ✅
    - [Phase 7.5: Smart Execution, GPU Verification, Init Hardening](#phase-75-smart-execution-gpu-verification-init-hardening) ✅
    - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email) ✅
-   - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api) ← **next**
+   - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api) ✅
    - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline) ✅
-   - [Phase 11: Testing & Hardening](#phase-11-testing--hardening)
+   - [Phase 11: Testing & Hardening](#phase-11-testing--hardening) ✅
 
 ---
 
@@ -1077,40 +1087,42 @@ Slurm job (compute node) --curl (HMAC-signed)--> rivanna.dev/api/notify (Vercel)
 
 ---
 
-### Phase 9: Site — Landing, Docs, Install API
+### Phase 9: Site — Landing, Docs, Install API ✅
 
 **Goal:** The Next.js site at `rivanna.dev`.
 
-**Design:** Mirror the design language from `~/all/uvacompute/apps/site`:
+**Completed work:**
 
-- Same font family
-- Same color palette / theme
-- Same layout patterns
-- Clean, minimal, developer-focused
+1. **Simplified landing page** (`src/app/page.tsx`): Removed AI-slop content, fixed incorrect `rv submit` → `rv run`. Now: title + tagline + install command + 3-command quickstart + docs link + footer.
 
-**Pages:**
+2. **Full docs site** with 4 pages (matching uvacompute design patterns — motion animations, sidebar nav, CodeBlock component):
+   - `/docs` — Getting Started: install, setup (`rv init`), first job (MIG, batch, status)
+   - `/docs/commands` — All 14 commands with options tables, usage examples, subcommand docs
+   - `/docs/allocator` — How it works (5-step), fan-out strategy, backfill detection, checkpoint-restart, full GPU specs table
+   - `/docs/configuration` — Config file reference, defaults, notifications, AI naming, environment variables, scratch keepalive, paths
 
-- `/` — Landing page: what rv is, install command (`curl -fsSL https://rivanna.dev/install.sh | bash`), quick demo
-- `/docs` — Documentation hub
-- `/docs/getting-started` — Install, init, first job walkthrough
-- `/docs/commands` — Full command reference
-- `/docs/allocator` — How the smart allocation works
+3. **Docs components**:
+   - `_components/code-block.tsx` — Copy-to-clipboard with animated icon swap (motion/react)
+   - `_components/docs-layout-client.tsx` — Sidebar with AnimatePresence expand/collapse, mobile toggle, ViewTransition, orange accent active states
 
-**API Routes:**
+4. **Public markdown mirrors** (for agent/LLM consumption):
+   - `public/docs/getting-started.md`
+   - `public/docs/commands.md`
+   - `public/docs/allocator.md`
+   - `public/docs/configuration.md`
 
-- `/api/notify/route.ts` — Webhook endpoint (built in Phase 8)
-- `/api/downloads/cli/latest/[platform]/route.ts` — Proxy GitHub Release binaries (mirror `~/all/uvacompute/apps/site/src/app/api/downloads/cli/latest/[platform]/route.ts`)
-- `/install/route.ts` — Serve `install.sh` with correct content-type
+5. **`public/llms.txt`** — Machine-readable doc index pointing to markdown files.
 
-**Install script (`public/install.sh`):**
+6. **Scratch keepalive feature** (CLI):
+   - Rivanna's 90-day purge policy would delete venv, env files, caches
+   - rv now auto-touches all files under `.rv/` and cache dirs once per day (fire-and-forget, non-blocking)
+   - Configurable via `[scratch_keepalive]` in config.toml, enabled by default
+   - Rate-limited via `~/.rv/last_keepalive` timestamp file
 
-Mirror `~/all/uvacompute/apps/site/public/install.sh`:
-
-- Detect platform (linux-x64, darwin-arm64/x64)
-- Download binary from `https://rivanna.dev/api/downloads/cli/latest/<platform>`
-- Install to `~/.local/bin/rv`
-- Print PATH instructions if needed
-- Binary names: `rv-linux`, `rv-macos`
+7. **Already completed** (from earlier phases):
+   - `/api/notify/route.ts` — HMAC-signed notifications (Phase 8)
+   - `/api/downloads/cli/latest/[platform]/route.ts` — GitHub release proxy (Phase 10)
+   - `public/install.sh` — Platform-detecting install script (Phase 10)
 
 ---
 
@@ -1155,36 +1167,49 @@ vc env pull .env.local
 
 ---
 
-### Phase 11: Testing & Hardening
+### Phase 11: Testing & Hardening ✅
 
-**Goal:** Tests, error handling, edge cases.
+**Goal:** Real-world stress testing on Rivanna with actual AI researcher workloads.
 
-**Unit tests:**
+**Completed work:**
 
-- All parsers (sinfo, squeue, sshare, sacct, hdquota, allocations) — test with captured real output
-- Allocator strategy generation — test with mock system state
-- Template generation — verify generated Slurm scripts are valid
-- Config read/write
+Ran 8 live tests on Rivanna (MIG, A6000, 4x A6000, V100) covering GPU sanity, vLLM inference, fan-out allocation, DDP training, FSDP training, multiprocessing/DataLoader, CPU/network benchmarks, and checkpoint template verification. Full results in `apps/cli/tests/workloads/FINDINGS.md`.
 
-**Integration tests:**
+**10 bugs found and fixed:**
 
-- SSH connection (requires VPN — skip in CI, run manually)
-- End-to-end: `rv init` -> `rv up --dry-run` -> verify generated scripts
+1. **(Critical) MIG QOSMaxCpuPerJobLimit** — `cpusPerTask` was never set; auto-memory of 54G on 2TB node caused Slurm to request too many CPUs. Fixed: MIG gets `cpusPerTask=1`, memory capped at 16G.
+2. **(Critical) Fast jobs vanish from squeue** — Jobs completing between monitor polls were marked FAILED. Fixed: `sacct` fallback for vanished jobs.
+3. **(Critical) Launcher detection** — `torchrun --nproc_per_node=4 train.py` failed because only `commandArgs[0]` was checked for local files. Fixed: scan all non-flag args, keep launcher prefix.
+4. **(High) sacct accounting lag** — Vanished jobs marked FAILED before accounting daemon writes record. Fixed: only mark FAILED if sacct has a terminal record.
+5. **(High) Checkpoint strategies pruned** — `direct+timemin` incorrectly dominated checkpoint strategies in ranking. Fixed: never prune across checkpoint/non-checkpoint types.
+6. **(High) Multi-node missing NODE_RANK** — torchrun can't discover node rank without `NODE_RANK=$SLURM_PROCID`. Fixed.
+7. **(High) MIG auto-memory too high** — 54G calculated for MIG on 2TB node. Fixed: cap at 16G.
+8. **(Medium) OMP_NUM_THREADS not set** — CPU oversubscription with multiple GPU ranks. Fixed: set to `cpusPerTask`.
+9. **(Medium) TOKENIZERS_PARALLELISM warning spam** — Fixed: set `TOKENIZERS_PARALLELISM=false`.
+10. **(Medium) Checkpoint TIMEOUT negative** — Possible when walltime < buffer. Fixed: floor at 60s.
 
-**Error handling:**
+**Template improvements:**
 
-- VPN not connected -> clear error message
-- SSH key not set up -> guide to `rv init`
-- No SU balance -> warn before submitting
-- All strategies fail -> explain why, suggest alternatives
-- Rivanna maintenance window -> detect from SSH error
+- `OMP_NUM_THREADS`, `TOKENIZERS_PARALLELISM`, `VLLM_CACHE_DIR` added to base template
+- `NODE_RANK=$SLURM_PROCID` added to multi-node template
+- `cpusPerTask` auto-calculated (MIG=1, others=gpusPerNode×4, max 32)
+- NodeList added to sacct parsing for job tracking
 
-**Edge cases:**
+**Performance baselines:**
 
-- User has multiple accounts (`allocations` returns multiple groups)
-- Scratch is nearly full (warn at >80%)
-- Job hits walltime before checkpoint -> handle gracefully
-- Concurrent `rv up` sessions -> each gets its own strategies
+- Scratch I/O: 1.5 GB/s (Weka), Network: 114 MB/s (~912 Mbps)
+- MIG allocation: 15-20s, A6000 allocation: 11-373s (load-dependent)
+
+**Deferred tests** (cluster fully loaded / expensive):
+
+- Multi-node 8-GPU across 2 nodes (all strategies queued 5+ min)
+- H200 allocation (100% utilization)
+- MoE Mixtral inference on 4x A100 (~2000 SU)
+
+**Test workloads** in `apps/cli/tests/workloads/`:
+
+- 8 test directories with Python scripts + requirements.txt
+- Each tests a specific CLI codepath (GPU sanity, vLLM, DDP, FSDP, multiprocess, multinode, checkpoint, MoE)
 
 **Code Deployment & Execution Model (for `rv up --run` and `rv sync`):**
 
