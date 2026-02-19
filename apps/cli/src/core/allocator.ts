@@ -617,9 +617,9 @@ export function rankStrategies(
       (existing) =>
         existing.gpuType === candidate.gpuType &&
         existing.topology === candidate.topology &&
+        existing.checkpointRestart === candidate.checkpointRestart &&
         existing.estimatedWaitSeconds <= candidate.estimatedWaitSeconds &&
-        existing.estimatedSU <= candidate.estimatedSU &&
-        (!existing.checkpointRestart || candidate.checkpointRestart),
+        existing.estimatedSU <= candidate.estimatedSU,
     );
     if (!dominated) {
       pruned.push(candidate);
@@ -648,13 +648,26 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     // NCCL buffers, model staging, and preprocessing.
     // e.g., 1 A100-80 on 1TB node → ~183G, 8 A100-80 → ~878G
     const spec = GPU_SPECS[strategy.gpuType];
-    const nodeMemGB = Math.floor(spec.nodeMemoryMB / 1024);
-    const gpuFraction = strategy.gpusPerNode / spec.perNode;
-    const proportionalGB = Math.floor(nodeMemGB * gpuFraction);
-    const withOverhead = Math.floor(proportionalGB * 1.5);
-    const cappedGB = Math.min(withOverhead, Math.floor(nodeMemGB * 0.9));
-    mem = `${Math.max(cappedGB, 16)}G`;
+    if (strategy.gpuType === "mig") {
+      // MIG slices share a large node — request modest memory to stay
+      // within QOS limits. 16G is plenty for single-GPU MIG workloads.
+      mem = "16G";
+    } else {
+      const nodeMemGB = Math.floor(spec.nodeMemoryMB / 1024);
+      const gpuFraction = strategy.gpusPerNode / spec.perNode;
+      const proportionalGB = Math.floor(nodeMemGB * gpuFraction);
+      const withOverhead = Math.floor(proportionalGB * 1.5);
+      const cappedGB = Math.min(withOverhead, Math.floor(nodeMemGB * 0.9));
+      mem = `${Math.max(cappedGB, 16)}G`;
+    }
   }
+
+  // Auto-set CPUs per task. MIG QOS limits CPUs strictly; other partitions
+  // benefit from enough CPUs for DataLoader workers and preprocessing.
+  const cpusPerTask =
+    strategy.gpuType === "mig"
+      ? 1
+      : Math.max(1, Math.min(strategy.gpusPerNode * 4, 32));
 
   const templateOpts: TemplateOptions = {
     partition: strategy.partition,
@@ -667,6 +680,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     command: request.command ?? "/bin/bash",
     nodes: strategy.nodes > 1 ? strategy.nodes : undefined,
     ntasks: strategy.nodes > 1 ? strategy.nodes : undefined,
+    cpusPerTask,
     mem,
     features: strategy.features,
     workDir: request.workDir,
@@ -809,10 +823,28 @@ export async function monitorAllocation(
       }
     }
 
-    // Mark vanished jobs as failed
-    for (const sub of submissionMap.values()) {
-      if (sub.state === "PENDING" && !jobs.some((j) => j.id === sub.jobId)) {
-        sub.state = "FAILED";
+    // Check for jobs that vanished from squeue (could be completed or failed).
+    // Fast jobs may go PENDING → RUNNING → COMPLETED between polls.
+    // Note: sacct has a lag — records may not appear immediately after completion.
+    const vanished = Array.from(submissionMap.values()).filter(
+      (s) =>
+        (s.state === "PENDING" || s.state === "RUNNING") &&
+        !jobs.some((j) => j.id === s.jobId),
+    );
+    if (vanished.length > 0) {
+      const history = await slurm.getJobHistory("now-1hour");
+      for (const sub of vanished) {
+        const record = history.find((h) => h.id === sub.jobId);
+        if (record?.state === "COMPLETED") {
+          sub.state = "COMPLETED";
+          if (record.nodes) sub.nodes = [record.nodes];
+          if (!winner) winner = sub;
+        } else if (record) {
+          // sacct has a record with a terminal state (FAILED, CANCELLED, etc.)
+          sub.state = "FAILED";
+        }
+        // If no sacct record yet (accounting lag), leave state unchanged
+        // so the next poll can check again.
       }
     }
 

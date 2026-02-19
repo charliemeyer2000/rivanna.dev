@@ -207,9 +207,10 @@ function buildRemoteCommand(entrypoint: string, args: string[]): string {
 /**
  * Full smart execution pipeline: detect → sync → deps → rewrite.
  *
- * If the first arg is a local file, syncs the project, ensures deps,
+ * Scans all args for a local file (supporting launchers like torchrun,
+ * accelerate, deepspeed). If found, syncs the project, ensures deps,
  * and returns a rewritten command for the Slurm script.
- * Returns null if the arg is a raw command (no local file detected).
+ * Returns null if no local files are detected in any argument.
  */
 export async function prepareExecution(
   commandArgs: string[],
@@ -217,14 +218,25 @@ export async function prepareExecution(
   ssh: SSHClient,
   spinner?: Ora,
 ): Promise<ExecutionResult | null> {
-  const firstArg = commandArgs[0];
-  if (!firstArg) return null;
+  if (commandArgs.length === 0) return null;
 
-  const localFile = detectLocalFile(firstArg);
-  if (!localFile) return null;
+  // Find the first arg that is a local file (skip flags starting with -)
+  let fileArgIndex = -1;
+  let localFile: string | null = null;
+  for (let i = 0; i < commandArgs.length; i++) {
+    const arg = commandArgs[i]!;
+    if (arg.startsWith("-")) continue;
+    const detected = detectLocalFile(arg);
+    if (detected) {
+      fileArgIndex = i;
+      localFile = detected;
+      break;
+    }
+  }
+
+  if (!localFile || fileArgIndex < 0) return null;
 
   const project = buildProjectInfo(localFile, user);
-  const remainingArgs = commandArgs.slice(1);
 
   // Sync project
   if (spinner) spinner.text = `Syncing ${project.name}...`;
@@ -242,7 +254,19 @@ export async function prepareExecution(
     venvPath = project.venvPath;
   }
 
-  const command = buildRemoteCommand(project.entrypoint, remainingArgs);
+  // Rebuild command: keep prefix args (launcher + flags), replace file path
+  // with relative entrypoint, keep trailing args
+  const prefix = commandArgs.slice(0, fileArgIndex);
+  const trailing = commandArgs.slice(fileArgIndex + 1);
+  const trailingStr = trailing.length > 0 ? " " + trailing.join(" ") : "";
+
+  // If there's a launcher prefix (torchrun, accelerate, etc.), use the
+  // entrypoint path directly — the launcher invokes Python itself.
+  // Only add `python` prefix when the file is the first arg.
+  const command =
+    prefix.length > 0
+      ? `${prefix.join(" ")} ${project.entrypoint}${trailingStr}`
+      : buildRemoteCommand(project.entrypoint, trailing);
 
   return {
     command,

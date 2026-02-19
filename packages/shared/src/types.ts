@@ -99,6 +99,7 @@ export interface JobAccounting {
   elapsedSeconds: number;
   exitCode: string;
   partition: string;
+  nodes?: string;
 }
 
 export interface TestOnlyResult {

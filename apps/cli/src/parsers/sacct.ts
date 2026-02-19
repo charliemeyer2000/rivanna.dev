@@ -3,7 +3,7 @@ import { parseTimeToSeconds } from "./squeue.ts";
 
 /**
  * Parse sacct output.
- * Expected format: `sacct --parsable2 -n -o JobID,JobName,State,Elapsed,ExitCode,Partition`
+ * Expected format: `sacct --parsable2 -n -o JobID,JobName,State,Elapsed,ExitCode,Partition,NodeList`
  * Pipe-delimited (`|`), no header (`-n`), no trailing delimiter (`--parsable2`).
  *
  * Sub-job entries (IDs containing `.`) are skipped.
@@ -18,7 +18,7 @@ export function parseSacct(output: string): JobAccounting[] {
     const parts = trimmed.split("|");
     if (parts.length < 6) continue;
 
-    const [id, name, state, elapsed, exitCode, partition] = parts;
+    const [id, name, state, elapsed, exitCode, partition, nodeList] = parts;
 
     // Skip sub-job entries (batch, extern, etc.)
     if (id!.includes(".")) continue;
@@ -31,6 +31,7 @@ export function parseSacct(output: string): JobAccounting[] {
       elapsedSeconds: parseTimeToSeconds(elapsed!),
       exitCode: exitCode!,
       partition: partition!,
+      nodes: nodeList || undefined,
     });
   }
 

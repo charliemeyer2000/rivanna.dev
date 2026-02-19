@@ -12,7 +12,6 @@ export function generateCheckpointScript(opts: TemplateOptions): string {
   const totalTimeSeconds = opts.totalTimeSeconds ?? 86400;
   const walltimeSeconds = opts.walltimeSeconds ?? 10740; // ~2:59:00
   const bufferSeconds = opts.bufferSeconds ?? 600;
-  const timeoutSeconds = walltimeSeconds - bufferSeconds;
 
   const lines: string[] = [];
 
@@ -32,6 +31,12 @@ export function generateCheckpointScript(opts: TemplateOptions): string {
   lines.push(`  WALLTIME_SECONDS=${walltimeSeconds}`);
   lines.push(`fi`);
   lines.push(`TIMEOUT=$((WALLTIME_SECONDS - BUFFER_SECONDS))`);
+  lines.push(`if [ $TIMEOUT -lt 60 ]; then`);
+  lines.push(
+    `  echo "rv: walltime too short for checkpoint (${bufferSeconds}s buffer > walltime)" >&2`,
+  );
+  lines.push(`  TIMEOUT=60`);
+  lines.push(`fi`);
   lines.push("");
 
   // Run with timeout

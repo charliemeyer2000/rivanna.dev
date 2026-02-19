@@ -76,11 +76,23 @@ export function generatePreamble(opts: TemplateOptions): string {
     lines.push("");
   }
 
-  // Cache and checkpoint directories
+  // Prevent CPU oversubscription: each GPU process should use limited
+  // OpenMP threads, not all available cores. Without this, torchrun with
+  // N ranks each spawns os.cpu_count() threads → massive contention.
+  if (opts.cpusPerTask) {
+    lines.push(`export OMP_NUM_THREADS=${opts.cpusPerTask}`);
+  } else {
+    lines.push(`export OMP_NUM_THREADS=1`);
+  }
+  lines.push(`export TOKENIZERS_PARALLELISM=false`);
+  lines.push("");
+
+  // Cache directories — all on scratch to avoid filling home quota
   lines.push(`# Cache directories`);
   lines.push(`export UV_CACHE_DIR=${PATHS.cache.uv(opts.user)}`);
   lines.push(`export PIP_CACHE_DIR=${PATHS.cache.pip(opts.user)}`);
   lines.push(`export HF_HOME=${PATHS.cache.hf(opts.user)}`);
+  lines.push(`export VLLM_CACHE_DIR=${PATHS.rvDir(opts.user)}/cache/vllm`);
   lines.push("");
 
   // Framework checkpoint defaults → scratch (avoid filling home dir)

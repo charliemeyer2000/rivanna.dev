@@ -26,6 +26,7 @@ export function generateMultiNodeScript(opts: TemplateOptions): string {
   );
   lines.push(`export MASTER_PORT=29500`);
   lines.push(`export WORLD_SIZE=$SLURM_NTASKS`);
+  lines.push(`export NODE_RANK=$SLURM_PROCID`);
   lines.push("");
 
   // Run with srun
