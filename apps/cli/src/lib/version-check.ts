@@ -48,7 +48,7 @@ export async function fetchLatestVersion(): Promise<string | null> {
     });
     if (!response.ok) return null;
     const data = await response.json();
-    return data.version ?? null;
+    return (data as { version?: string }).version ?? null;
   } catch {
     return null;
   }

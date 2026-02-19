@@ -85,13 +85,26 @@ async function runSsh(jobId: string | undefined, options: SshOptions) {
     return;
   }
 
-  // Attach via srun (compute nodes don't have SSH keys)
+  // Inject environment variables for the compute session
+  const user = config.connection.user;
+  const ckptDir = `/scratch/${user}/.rv/checkpoints/${job.name}-${targetJobId}`;
+  const hfHome =
+    config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
+  const envExports = [
+    `RV_CHECKPOINT_DIR=${ckptDir}`,
+    `CHECKPOINT_DIR=${ckptDir}`,
+    `HF_HOME=${hfHome}`,
+    `UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
+    `PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
+  ].join(",");
+
+  // Attach via srun (compute nodes don't allow direct SSH)
   console.log(theme.muted(`\nConnecting to ${node}...`));
   const exitCode = await slurm.sshClient.execInteractive([
     "ssh",
     "-t",
     config.connection.host,
-    `srun --jobid=${targetJobId} --overlap --pty /bin/bash`,
+    `srun --jobid=${targetJobId} --overlap --export=ALL,${envExports} --pty /bin/bash`,
   ]);
   process.exit(exitCode);
 }

@@ -203,6 +203,18 @@ async function runUp(options: UpOptions) {
   }
 
   // --- Attach interactive shell ---
+  const user = config.connection.user;
+  const ckptDir = `/scratch/${user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
+  const hfHome =
+    config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
+  const envExports = [
+    `RV_CHECKPOINT_DIR=${ckptDir}`,
+    `CHECKPOINT_DIR=${ckptDir}`,
+    `HF_HOME=${hfHome}`,
+    `UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
+    `PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
+  ].join(",");
+
   console.log(theme.muted(`  Job ID: ${winner.jobId}`));
   console.log(theme.muted(`  Strategy: ${winner.strategy.label}`));
   console.log();
@@ -211,7 +223,7 @@ async function runUp(options: UpOptions) {
     "ssh",
     "-t",
     config.connection.host,
-    `srun --jobid=${winner.jobId} --overlap --pty /bin/bash`,
+    `srun --jobid=${winner.jobId} --overlap --export=ALL,${envExports} --pty /bin/bash`,
   ]);
   process.exit(exitCode);
 }
