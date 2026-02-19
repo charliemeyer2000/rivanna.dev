@@ -9,10 +9,22 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.rivanna.dev"),
   title: "rivanna.dev",
   description: "effortless GPU computing on UVA's Rivanna cluster",
   icons: {
     icon: "/favicon.svg",
+  },
+  openGraph: {
+    title: "rivanna.dev",
+    description: "effortless GPU computing on UVA's Rivanna cluster",
+    images: ["/api/og"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "rivanna.dev",
+    description: "effortless GPU computing on UVA's Rivanna cluster",
+    images: ["/api/og"],
   },
 };
 
