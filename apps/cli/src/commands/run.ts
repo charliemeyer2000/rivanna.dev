@@ -88,7 +88,13 @@ async function runRun(commandParts: string[], options: RunOptions) {
   );
   prepSpinner?.stop();
 
-  const command = execution ? execution.command : commandParts.join(" ");
+  const command = execution
+    ? execution.command
+    : commandParts
+        .map((p) =>
+          /[^a-zA-Z0-9_./:=@-]/.test(p) ? `"${p.replace(/"/g, '\\"')}"` : p,
+        )
+        .join(" ");
 
   // Smart job naming
   let jobName = options.name;
