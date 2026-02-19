@@ -193,4 +193,18 @@ async function runRun(commandParts: string[], options: RunOptions) {
   // Tail logs until completion
   const logPath = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}.out`;
   await tailJobLogs(slurm, winner.jobId, logPath, { silent: isJson });
+
+  // Post-job summary with actionable commands
+  if (!isJson) {
+    console.log(theme.muted("\n  Files on Rivanna:"));
+    if (execution?.workDir) {
+      console.log(theme.muted(`    Workspace:   ${execution.workDir}`));
+    }
+    console.log(theme.muted(`    Logs:        ${logPath}`));
+    console.log();
+    if (execution?.workDir) {
+      console.log(theme.muted(`  rv sync pull ${execution.workDir} .`));
+    }
+    console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
+  }
 }

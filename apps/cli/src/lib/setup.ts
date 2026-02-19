@@ -52,6 +52,8 @@ function maybeKeepalive(ssh: SSHClient, config: RvConfig): void {
     `${scratch}/.cache/uv`,
     `${scratch}/.cache/pip`,
     `${scratch}/.cache/huggingface`,
+    `${scratch}/.rv/checkpoints`,
+    `${scratch}/rv-workspaces`,
   ];
   if (config.shared?.hf_cache) dirs.push(config.shared.hf_cache);
 

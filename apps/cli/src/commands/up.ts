@@ -249,6 +249,18 @@ async function runUp(options: UpOptions) {
   if (options.run) {
     const logPath = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}.out`;
     await tailJobLogs(slurm, winner.jobId, logPath);
+
+    // Post-job summary with actionable commands
+    console.log(theme.muted("\n  Files on Rivanna:"));
+    if (workDir) {
+      console.log(theme.muted(`    Workspace:   ${workDir}`));
+    }
+    console.log(theme.muted(`    Logs:        ${logPath}`));
+    console.log();
+    if (workDir) {
+      console.log(theme.muted(`  rv sync pull ${workDir} .`));
+    }
+    console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
   } else {
     // Interactive: attach shell
     console.log(theme.muted(`  Job ID: ${winner.jobId}`));
