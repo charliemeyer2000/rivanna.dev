@@ -15,6 +15,7 @@ import { parseSinfo } from "@/parsers/sinfo.ts";
 import { parseAllocations } from "@/parsers/allocations.ts";
 import { parseHdquota } from "@/parsers/hdquota.ts";
 import { cleanStaleForwards } from "@/core/forward-store.ts";
+import { VPNError, SSHConnectionError, SSHTimeoutError } from "@/lib/errors.ts";
 
 interface StatusOptions {
   json?: boolean;
@@ -105,19 +106,68 @@ async function runStatus(options: StatusOptions) {
 
   const spinner = isJson ? null : ora("Fetching cluster status...").start();
 
-  // Batched SSH call for all data
-  const [allocOut, hdquotaOut, squeueOut, sinfoOut] =
-    await slurm.sshClient.execBatch([
+  // Batched SSH call for all data — handle connectivity failures gracefully
+  let batchResults: string[] = [];
+  try {
+    batchResults = await slurm.sshClient.execBatch([
       "allocations 2>/dev/null || true",
       "hdquota 2>/dev/null || true",
       `squeue --all -u ${user} -o "${SQUEUE_FORMAT}" --noheader`,
       `sinfo --Node -p gpu,gpu-mig,interactive-rtx3090,gpu-a6000,gpu-a40,gpu-a100-40,gpu-a100-80,gpu-v100,gpu-h200 -o "${SINFO_FORMAT}" --noheader`,
     ]);
+  } catch (error) {
+    spinner?.stop();
 
-  const suBalance = parseAllocations(allocOut ?? "");
-  const storage = parseHdquota(hdquotaOut ?? "");
-  const jobs = parseSqueue(squeueOut ?? "");
-  const nodes = parseSinfo(sinfoOut ?? "");
+    const isVpn = error instanceof VPNError || error instanceof SSHTimeoutError;
+    const isAuth =
+      error instanceof SSHConnectionError &&
+      error.message.includes("authentication failed");
+
+    if (isJson) {
+      console.log(
+        JSON.stringify(
+          {
+            connection: {
+              ok: false,
+              host: config.connection.host,
+              user,
+              error: isVpn
+                ? "vpn_disconnected"
+                : isAuth
+                  ? "auth_failed"
+                  : "connection_failed",
+            },
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      if (isVpn) {
+        console.log(
+          theme.info("\nConnection") +
+            `    ${theme.error("DISCONNECTED")} — check UVA VPN (Cisco AnyConnect)`,
+        );
+      } else if (isAuth) {
+        console.log(
+          theme.info("\nConnection") +
+            `    ${theme.error("AUTH FAILED")} — run ${theme.accent("rv init")} to fix`,
+        );
+      } else {
+        console.log(
+          theme.info("\nConnection") +
+            `    ${theme.error("FAILED")} — ${error instanceof Error ? error.message : "unknown error"}`,
+        );
+      }
+      console.log();
+    }
+    process.exit(1);
+  }
+
+  const suBalance = parseAllocations(batchResults[0] ?? "");
+  const storage = parseHdquota(batchResults[1] ?? "");
+  const jobs = parseSqueue(batchResults[2] ?? "");
+  const nodes = parseSinfo(batchResults[3] ?? "");
   const gpuSummary = summarizeGPUAvailability(nodes);
   const forwards = cleanStaleForwards();
 
