@@ -1,4 +1,23 @@
-import type { GPUSpec, GPUType } from "./types.ts";
+import type { GPUSpec, GPUType, JobState } from "./types.ts";
+
+/**
+ * Slurm states where the job has definitively finished.
+ * Everything not in this set is considered "alive" (still running or will run).
+ * Source: https://slurm.schedmd.com/job_state_codes.html
+ */
+export const TERMINAL_STATES = new Set<JobState>([
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+  "NODE_FAIL",
+  "PREEMPTED",
+  "BOOT_FAIL",
+  "DEADLINE",
+  "OUT_OF_MEMORY",
+  "REVOKED",
+  "SPECIAL_EXIT",
+]);
 
 export const GPU_SPECS: Record<GPUType, GPUSpec> = {
   mig: {

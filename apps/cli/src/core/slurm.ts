@@ -93,15 +93,17 @@ export class SlurmClient {
    */
   async getJobState(
     jobId: string,
-  ): Promise<{ state: string; nodes?: string } | null> {
+  ): Promise<{ state: string; exitCode?: number; nodes?: string } | null> {
     try {
       const output = await this.ssh.exec(`scontrol show job ${jobId} 2>&1`);
       if (output.includes("Invalid job id")) return null;
       const stateMatch = output.match(/JobState=(\S+)/);
       const nodeMatch = output.match(/NodeList=(\S+)/);
+      const exitMatch = output.match(/ExitCode=(\d+):/);
       if (!stateMatch) return null;
       return {
         state: stateMatch[1]!,
+        exitCode: exitMatch ? parseInt(exitMatch[1]!, 10) : undefined,
         nodes: nodeMatch?.[1] === "(null)" ? undefined : nodeMatch?.[1],
       };
     } catch {

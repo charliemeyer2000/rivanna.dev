@@ -68,6 +68,14 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-19: Checkpoint dir was `$SLURM_JOB_NAME` only — collides on repeated runs. Fixed to `$SLURM_JOB_NAME-$SLURM_JOB_ID` matching log file pattern.
 - 2026-02-19: `RV_CHECKPOINT_DIR` is a suggestion, not enforced. Most frameworks (HF Trainer, Lightning, VeRL/FSDP) use their own output_dir config. Document clearly so users configure their framework to use `$RV_CHECKPOINT_DIR`.
 - 2026-02-19: Post-job summary (workspace, logs, checkpoints, pull commands) solves discoverability — users know where results are without guessing remote paths.
+- 2026-02-19: Slurm has 24 job states from squeue `%T` — 12 base + 12 flag. CONFIGURING and COMPLETING are transient states that fast MIG jobs pass through in <1s.
+- 2026-02-19: TERMINAL_STATES denylist (defined in `@rivanna/shared`) is more robust than ALIVE_STATES allowlist — unknown states default to "alive" rather than causing monitor failures.
+- 2026-02-19: Exit code propagation uses explicit `_rv_exit=$?` capture, NOT `set -e` which breaks `module load`, `conda activate`, and training frameworks that exit non-zero on SIGUSR1.
+- 2026-02-19: `scontrol show job` returns instant state + ExitCode. `sacct` has 5-30s accounting lag. Use scontrol for real-time state, sacct as fallback for vanished jobs.
+- 2026-02-19: `execBatch` must use `;` not `&&` — partial command failures silently drop all subsequent results. Callers handle empty output gracefully.
+- 2026-02-19: `rv exec` requires `shellJoin` (POSIX quoting) for user commands — without it, `rv exec echo "hello world"` sends unquoted args.
+- 2026-02-19: Dual log tailing (stdout + stderr) via batched SSH `wc -l` + `tail`. Stderr lines printed in red via `theme.error()`.
+- 2026-02-19: Winner detection must exclude SUSPENDED, STOPPED (admin actions), and all REQUEUE variants — only RUNNING, COMPLETING, COMPLETED are valid winners.
 
 ---
 

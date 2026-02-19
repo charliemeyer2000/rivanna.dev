@@ -100,7 +100,7 @@ export class SSHClient {
 
   async execBatch(commands: string[], delimiter?: string): Promise<string[]> {
     const delim = delimiter ?? BATCH_DELIMITER;
-    const combined = commands.join(` && echo "${delim}" && `);
+    const combined = commands.join(` ; echo "${delim}" ; `);
     const output = await this.exec(combined);
     return output.split(delim).map((s) => s.trim());
   }

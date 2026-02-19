@@ -1,4 +1,9 @@
-export { GPU_SPECS, SCHEDULER_CONFIG, PATHS } from "./constants.ts";
+export {
+  GPU_SPECS,
+  SCHEDULER_CONFIG,
+  PATHS,
+  TERMINAL_STATES,
+} from "./constants.ts";
 export type {
   GPUType,
   GPUSpec,

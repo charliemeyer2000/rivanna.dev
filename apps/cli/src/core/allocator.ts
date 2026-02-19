@@ -11,7 +11,7 @@ import type {
   JobState,
   TemplateOptions,
 } from "@rivanna/shared";
-import { GPU_SPECS, PATHS } from "@rivanna/shared";
+import { GPU_SPECS, PATHS, TERMINAL_STATES } from "@rivanna/shared";
 import type { SlurmClient } from "./slurm.ts";
 import type { SSHClient } from "./ssh.ts";
 import {
@@ -840,7 +840,21 @@ export async function monitorAllocation(
       sub.state = job.state;
       sub.nodes = job.nodes;
 
-      if (job.state === "RUNNING" && !winner) {
+      // A winner is a job that got resources and ran (or is running).
+      // Fast jobs can complete between polls, so we can't rely on catching RUNNING.
+      // Exclude: PENDING, terminal failures, requeue/hold, suspended, UNKNOWN.
+      if (
+        !TERMINAL_STATES.has(job.state) &&
+        job.state !== "PENDING" &&
+        job.state !== "REQUEUED" &&
+        job.state !== "REQUEUE_FED" &&
+        job.state !== "REQUEUE_HOLD" &&
+        job.state !== "RESV_DEL_HOLD" &&
+        job.state !== "SUSPENDED" &&
+        job.state !== "STOPPED" &&
+        job.state !== "UNKNOWN" &&
+        !winner
+      ) {
         winner = sub;
       }
     }
@@ -849,19 +863,19 @@ export async function monitorAllocation(
     // Use scontrol (instant, no accounting lag) with sacct fallback.
     const vanished = Array.from(submissionMap.values()).filter(
       (s) =>
-        (s.state === "PENDING" || s.state === "RUNNING") &&
-        !jobs.some((j) => j.id === s.jobId),
+        !TERMINAL_STATES.has(s.state) && !jobs.some((j) => j.id === s.jobId),
     );
     for (const sub of vanished) {
       // scontrol queries the Slurm controller directly — no lag
       const info = await slurm.getJobState(sub.jobId);
+
       if (info) {
-        if (info.state === "COMPLETED") {
+        if (info.state === "COMPLETED" || info.state === "COMPLETING") {
           sub.state = "COMPLETED";
           if (info.nodes) sub.nodes = [info.nodes];
           if (!winner) winner = sub;
-        } else if (info.state !== "PENDING" && info.state !== "RUNNING") {
-          sub.state = "FAILED";
+        } else if (TERMINAL_STATES.has(info.state as JobState)) {
+          sub.state = info.state as JobState;
         }
       } else {
         // Job purged from controller — fall back to sacct
@@ -872,7 +886,9 @@ export async function monitorAllocation(
           if (record.nodes) sub.nodes = [record.nodes];
           if (!winner) winner = sub;
         } else if (record) {
-          sub.state = "FAILED";
+          sub.state = TERMINAL_STATES.has(record.state as JobState)
+            ? (record.state as JobState)
+            : "FAILED";
         }
       }
     }
@@ -881,9 +897,7 @@ export async function monitorAllocation(
 
     if (winner) {
       const losers = Array.from(submissionMap.values()).filter(
-        (s) =>
-          s.jobId !== winner!.jobId &&
-          (s.state === "PENDING" || s.state === "RUNNING"),
+        (s) => s.jobId !== winner!.jobId && !TERMINAL_STATES.has(s.state),
       );
       if (losers.length > 0) {
         await slurm.cancelJobs(losers.map((s) => s.jobId));
@@ -899,13 +913,13 @@ export async function monitorAllocation(
       };
     }
 
-    const allDead = Array.from(submissionMap.values()).every(
-      (s) => s.state !== "PENDING" && s.state !== "RUNNING",
+    const allDead = Array.from(submissionMap.values()).every((s) =>
+      TERMINAL_STATES.has(s.state),
     );
     if (allDead) {
       // Fetch error logs from failed jobs to show the user what went wrong
       const failed = Array.from(submissionMap.values()).filter(
-        (s) => s.state === "FAILED",
+        (s) => TERMINAL_STATES.has(s.state) && s.state !== "COMPLETED",
       );
       let detail = "";
       if (failed.length > 0) {

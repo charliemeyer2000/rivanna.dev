@@ -3,9 +3,10 @@ import ora from "ora";
 import { PATHS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { tailJobLogs } from "@/core/log-tailer.ts";
+import { tailJobLogs, type LogStream } from "@/core/log-tailer.ts";
 
 interface LogsOptions {
+  out?: boolean;
   err?: boolean;
   pull?: boolean;
   follow?: boolean;
@@ -17,7 +18,8 @@ export function registerLogsCommand(program: Command) {
     .command("logs")
     .description("View job output logs")
     .argument("[jobId]", "job to view (default: most recent)")
-    .option("--err", "show stderr instead of stdout")
+    .option("--out", "show stdout only")
+    .option("--err", "show stderr only")
     .option("--pull", "download log files locally")
     .option("-f, --follow", "follow log output (default for running jobs)")
     .option("--json", "output as JSON")
@@ -67,11 +69,18 @@ async function resolveLogPath(
   return `${logDir}/rv-${jobId}.${ext}`;
 }
 
+function resolveStream(options: LogsOptions): LogStream {
+  if (options.out && options.err) return "both";
+  if (options.out) return "out";
+  if (options.err) return "err";
+  return "both";
+}
+
 async function runLogs(jobId: string | undefined, options: LogsOptions) {
   const { config, slurm } = ensureSetup();
   const isJson = !!options.json;
   const user = config.connection.user;
-  const ext = options.err ? "err" : "out";
+  const stream = resolveStream(options);
 
   let targetJobId = jobId;
 
@@ -97,7 +106,8 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
     }
   }
 
-  const logPath = await resolveLogPath(slurm, targetJobId, user, ext);
+  const outPath = await resolveLogPath(slurm, targetJobId, user, "out");
+  const errPath = await resolveLogPath(slurm, targetJobId, user, "err");
 
   // Show header
   if (!isJson) {
@@ -113,9 +123,6 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
 
   // Pull mode: download log files
   if (options.pull) {
-    const outPath = await resolveLogPath(slurm, targetJobId, user, "out");
-    const errPath = await resolveLogPath(slurm, targetJobId, user, "err");
-
     if (!isJson) {
       console.log(theme.info("\nDownloading log files..."));
     }
@@ -145,17 +152,47 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
   const shouldFollow = options.follow || isRunning;
 
   if (shouldFollow) {
-    await tailJobLogs(slurm, targetJobId, logPath, { silent: isJson });
+    await tailJobLogs(slurm, targetJobId, outPath, errPath, {
+      silent: isJson,
+      stream,
+    });
   } else {
     // One-shot read
-    const content = await slurm.sshClient
-      .exec(`cat ${logPath} 2>/dev/null || echo "[No log file found]"`)
-      .catch(() => "[Failed to read log file]");
+    if (stream === "both" || stream === "out") {
+      const content = await slurm.sshClient
+        .exec(`cat ${outPath} 2>/dev/null || true`)
+        .catch(() => "");
+      if (isJson) {
+        console.log(
+          JSON.stringify({ jobId: targetJobId, logPath: outPath, content }),
+        );
+      } else if (content) {
+        console.log(content);
+      }
+    }
 
-    if (isJson) {
-      console.log(JSON.stringify({ jobId: targetJobId, logPath, content }));
-    } else {
-      console.log(content);
+    if (stream === "both" || stream === "err") {
+      const content = await slurm.sshClient
+        .exec(`cat ${errPath} 2>/dev/null || true`)
+        .catch(() => "");
+      if (isJson) {
+        console.log(
+          JSON.stringify({ jobId: targetJobId, logPath: errPath, content }),
+        );
+      } else if (content) {
+        if (stream === "both") {
+          // Color stderr red when showing both
+          for (const line of content.split("\n")) {
+            if (line) console.log(theme.error(line));
+          }
+        } else {
+          console.log(content);
+        }
+      }
+    }
+
+    if (!isJson && stream === "both") {
+      console.log(theme.muted(`\n  (stderr shown in ${theme.error("red")})`));
     }
   }
 }

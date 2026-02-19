@@ -1,5 +1,5 @@
 import type { TemplateOptions } from "@rivanna/shared";
-import { generatePreamble, generateCompletionNotify } from "./base.ts";
+import { generatePreamble, generateEpilogue } from "./base.ts";
 
 /**
  * Generate a multi-node distributed training Slurm batch script.
@@ -33,7 +33,7 @@ export function generateMultiNodeScript(opts: TemplateOptions): string {
   lines.push(`# Run distributed command`);
   lines.push(`srun --export=ALL ${opts.command}`);
 
-  lines.push(generateCompletionNotify(opts));
+  lines.push(generateEpilogue(opts));
 
   return lines.join("\n");
 }

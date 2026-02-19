@@ -1,5 +1,5 @@
 import type { TemplateOptions } from "@rivanna/shared";
-import { generatePreamble, generateCompletionNotify } from "./base.ts";
+import { generatePreamble, generateEpilogue } from "./base.ts";
 
 /**
  * Generate a checkpoint-restart Slurm batch script.
@@ -60,7 +60,14 @@ export function generateCheckpointScript(opts: TemplateOptions): string {
     lines.push(`  _rv_notify RESUBMITTED`);
   }
   lines.push(`else`);
-  lines.push(generateCompletionNotify(opts).trim() || "  true");
+  if (opts.notifyUrl) {
+    lines.push(`  if [ $EXIT_CODE -ne 0 ]; then`);
+    lines.push(`    _rv_notify FAILED`);
+    lines.push(`  else`);
+    lines.push(`    _rv_notify COMPLETED`);
+    lines.push(`  fi`);
+  }
+  lines.push(`  exit $EXIT_CODE`);
   lines.push(`fi`);
 
   return lines.join("\n");

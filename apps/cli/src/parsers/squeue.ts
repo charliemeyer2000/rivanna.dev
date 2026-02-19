@@ -1,5 +1,6 @@
 import type { Job, JobState } from "@rivanna/shared";
 
+/** All 24 states squeue %T can return. */
 const VALID_STATES = new Set<JobState>([
   "RUNNING",
   "PENDING",
@@ -10,6 +11,21 @@ const VALID_STATES = new Set<JobState>([
   "NODE_FAIL",
   "PREEMPTED",
   "SUSPENDED",
+  "BOOT_FAIL",
+  "DEADLINE",
+  "OUT_OF_MEMORY",
+  "COMPLETING",
+  "CONFIGURING",
+  "RESIZING",
+  "REQUEUED",
+  "REQUEUE_FED",
+  "REQUEUE_HOLD",
+  "SPECIAL_EXIT",
+  "STOPPED",
+  "REVOKED",
+  "RESV_DEL_HOLD",
+  "SIGNALING",
+  "STAGE_OUT",
 ]);
 
 /**

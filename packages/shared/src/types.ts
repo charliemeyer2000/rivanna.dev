@@ -46,7 +46,12 @@ export type NodeState = {
   memoryTotalMB: number;
 };
 
+/**
+ * All 24 possible job states that `squeue %T` can return, plus UNKNOWN fallback.
+ * Source: https://slurm.schedmd.com/job_state_codes.html
+ */
 export type JobState =
+  // Base states (12)
   | "RUNNING"
   | "PENDING"
   | "COMPLETED"
@@ -56,6 +61,23 @@ export type JobState =
   | "NODE_FAIL"
   | "PREEMPTED"
   | "SUSPENDED"
+  | "BOOT_FAIL"
+  | "DEADLINE"
+  | "OUT_OF_MEMORY"
+  // Flag states visible in squeue (12)
+  | "COMPLETING"
+  | "CONFIGURING"
+  | "RESIZING"
+  | "REQUEUED"
+  | "REQUEUE_FED"
+  | "REQUEUE_HOLD"
+  | "SPECIAL_EXIT"
+  | "STOPPED"
+  | "REVOKED"
+  | "RESV_DEL_HOLD"
+  | "SIGNALING"
+  | "STAGE_OUT"
+  // Fallback
   | "UNKNOWN";
 
 export interface Job {

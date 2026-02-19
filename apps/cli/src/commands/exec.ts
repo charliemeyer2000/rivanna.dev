@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
+import { shellJoin } from "@/lib/shell-quote.ts";
 
 export function registerExecCommand(program: Command) {
   program
@@ -28,7 +29,7 @@ export function registerExecCommand(program: Command) {
 
 async function runExec(commandParts: string[], options: { json?: boolean }) {
   const { slurm } = ensureSetup();
-  const command = commandParts.join(" ");
+  const command = shellJoin(commandParts);
 
   const output = await slurm.sshClient.exec(command);
 

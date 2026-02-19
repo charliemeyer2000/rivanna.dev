@@ -145,6 +145,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     request,
     envVars,
   );
+
   if (submissions.length === 0) {
     throw new Error("All strategy submissions failed.");
   }
@@ -157,7 +158,9 @@ async function runRun(commandParts: string[], options: RunOptions) {
   const outcome = await monitorAllocation(slurm, submissions, {
     onUpdate: (subs: StrategySubmission[]) => {
       if (!monitorSpinner) return;
-      const pending = subs.filter((s) => s.state === "PENDING").length;
+      const pending = subs.filter(
+        (s) => s.state === "PENDING" || s.state === "CONFIGURING",
+      ).length;
       const elapsed = Math.round((Date.now() - startMs) / 1000);
       monitorSpinner.text = `Waiting... ${pending} pending (${elapsed}s)`;
     },
@@ -192,8 +195,10 @@ async function runRun(commandParts: string[], options: RunOptions) {
   }
 
   // Tail logs until completion
-  const logPath = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}.out`;
-  await tailJobLogs(slurm, winner.jobId, logPath, { silent: isJson });
+  const logBase = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}`;
+  const outPath = `${logBase}.out`;
+  const errPath = `${logBase}.err`;
+  await tailJobLogs(slurm, winner.jobId, outPath, errPath, { silent: isJson });
 
   // Post-job summary with actionable commands
   if (!isJson) {
@@ -202,7 +207,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     if (execution?.workDir) {
       console.log(theme.muted(`    Workspace:    ${execution.workDir}`));
     }
-    console.log(theme.muted(`    Logs:         ${logPath}`));
+    console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
     console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
     console.log();
     if (execution?.workDir) {

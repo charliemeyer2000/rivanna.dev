@@ -1,5 +1,5 @@
 import type { TemplateOptions } from "@rivanna/shared";
-import { generatePreamble, generateCompletionNotify } from "./base.ts";
+import { generatePreamble, generateEpilogue } from "./base.ts";
 
 /**
  * Generate a simple single-node Slurm batch script.
@@ -10,7 +10,7 @@ export function generateSimpleScript(opts: TemplateOptions): string {
   lines.push(generatePreamble(opts));
   lines.push(`# Run command`);
   lines.push(opts.command);
-  lines.push(generateCompletionNotify(opts));
+  lines.push(generateEpilogue(opts));
 
   return lines.join("\n");
 }

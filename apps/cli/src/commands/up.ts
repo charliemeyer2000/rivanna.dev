@@ -161,8 +161,12 @@ async function runUp(options: UpOptions) {
   const outcome = await monitorAllocation(slurm, submissions, {
     onUpdate: (subs: StrategySubmission[]) => {
       if (!monitorSpinner) return;
-      const pending = subs.filter((s) => s.state === "PENDING").length;
-      const running = subs.filter((s) => s.state === "RUNNING").length;
+      const pending = subs.filter(
+        (s) => s.state === "PENDING" || s.state === "CONFIGURING",
+      ).length;
+      const running = subs.filter(
+        (s) => s.state === "RUNNING" || s.state === "COMPLETING",
+      ).length;
       const elapsed = Math.round((Date.now() - startMs) / 1000);
       monitorSpinner.text = `Waiting... ${pending} pending, ${running} running (${elapsed}s)`;
     },

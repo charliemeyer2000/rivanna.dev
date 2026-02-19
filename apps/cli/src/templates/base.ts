@@ -64,7 +64,6 @@ export function generatePreamble(opts: TemplateOptions): string {
       `    -d "{\\"user\\":\\"$USER\\",\\"jobId\\":\\"$SLURM_JOB_ID\\",\\"jobName\\":\\"$SLURM_JOB_NAME\\",\\"event\\":\\"$1\\",\\"node\\":\\"$(hostname)\\",\\"ts\\":\\"$(date -Iseconds)\\",\\"epoch\\":\${_ep},\\"sig\\":\\"\${_sg}\\"}" 2>/dev/null &`,
     );
     lines.push(`}`);
-    lines.push(`trap '_rv_notify FAILED' ERR`);
     lines.push(`_rv_notify STARTED`);
     lines.push("");
   }
@@ -116,9 +115,29 @@ export function generatePreamble(opts: TemplateOptions): string {
 }
 
 /**
- * Generate the completion notification call (for end of script).
+ * Generate the script epilogue: capture exit code, send correct
+ * notification, and propagate the exit code to Slurm.
+ *
+ * @param exitCodeVar - If the caller already captured `$?` into a variable
+ *   (e.g. checkpoint's `EXIT_CODE`), pass the variable name here to skip
+ *   the `_rv_exit=$?` capture line.
  */
-export function generateCompletionNotify(opts: TemplateOptions): string {
-  if (!opts.notifyUrl) return "";
-  return "\n_rv_notify COMPLETED\n";
+export function generateEpilogue(
+  opts: TemplateOptions,
+  exitCodeVar?: string,
+): string {
+  const lines: string[] = [];
+  const v = exitCodeVar ?? "_rv_exit";
+  if (!exitCodeVar) {
+    lines.push(`${v}=$?`);
+  }
+  if (opts.notifyUrl) {
+    lines.push(`if [ $${v} -ne 0 ]; then`);
+    lines.push(`  _rv_notify FAILED`);
+    lines.push(`else`);
+    lines.push(`  _rv_notify COMPLETED`);
+    lines.push(`fi`);
+  }
+  lines.push(`exit $${v}`);
+  return "\n" + lines.join("\n") + "\n";
 }

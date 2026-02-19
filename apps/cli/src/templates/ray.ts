@@ -1,5 +1,5 @@
 import type { TemplateOptions } from "@rivanna/shared";
-import { generatePreamble, generateCompletionNotify } from "./base.ts";
+import { generatePreamble, generateEpilogue } from "./base.ts";
 
 /**
  * Generate a Ray cluster Slurm batch script.
@@ -51,13 +51,14 @@ export function generateRayScript(opts: TemplateOptions): string {
   // Run user command
   lines.push(`# Run command`);
   lines.push(opts.command);
+  lines.push(`_rv_exit=$?`);
   lines.push("");
 
   // Tear down
   lines.push(`# Tear down Ray cluster`);
   lines.push(`ray stop`);
 
-  lines.push(generateCompletionNotify(opts));
+  lines.push(generateEpilogue(opts, "_rv_exit"));
 
   return lines.join("\n");
 }
