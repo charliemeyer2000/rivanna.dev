@@ -677,7 +677,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     account: request.account,
     jobName: request.jobName,
     user: request.user,
-    command: request.command ?? "/bin/bash",
+    command: request.command ?? "sleep infinity",
     nodes: strategy.nodes > 1 ? strategy.nodes : undefined,
     ntasks: strategy.nodes > 1 ? strategy.nodes : undefined,
     cpusPerTask,
