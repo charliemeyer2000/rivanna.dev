@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${ibmPlexMono.variable} font-mono antialiased`}>
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
