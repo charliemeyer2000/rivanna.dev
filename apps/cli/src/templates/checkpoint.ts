@@ -25,7 +25,12 @@ export function generateCheckpointScript(opts: TemplateOptions): string {
   lines.push("");
 
   lines.push(`BUFFER_SECONDS=${bufferSeconds}`);
-  lines.push(`WALLTIME_SECONDS=${walltimeSeconds}`);
+  lines.push(`# Detect actual walltime (may differ when --time-min is used)`);
+  lines.push(`if [ -n "$SLURM_JOB_END_TIME" ]; then`);
+  lines.push(`  WALLTIME_SECONDS=$(( SLURM_JOB_END_TIME - $(date +%s) ))`);
+  lines.push(`else`);
+  lines.push(`  WALLTIME_SECONDS=${walltimeSeconds}`);
+  lines.push(`fi`);
   lines.push(`TIMEOUT=$((WALLTIME_SECONDS - BUFFER_SECONDS))`);
   lines.push("");
 

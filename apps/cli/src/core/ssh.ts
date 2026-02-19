@@ -41,7 +41,10 @@ export class SSHClient {
     return this.user ? `${this.user}@${this.host}` : this.host;
   }
 
-  async exec(command: string): Promise<string> {
+  async exec(
+    command: string,
+    options?: { timeoutMs?: number },
+  ): Promise<string> {
     const args = [
       "ssh",
       "-o",
@@ -59,7 +62,7 @@ export class SSHClient {
 
     const timeout = setTimeout(() => {
       proc.kill();
-    }, this.timeoutMs);
+    }, options?.timeoutMs ?? this.timeoutMs);
 
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),

@@ -5,6 +5,8 @@ import {
   allocate,
   submitStrategies,
   monitorAllocation,
+  verifyAllocation,
+  getTopologyWarnings,
 } from "@/core/allocator.ts";
 import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
@@ -12,12 +14,14 @@ import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
+import { prepareExecution } from "@/core/project.ts";
 
 interface RunOptions {
   gpu: string;
   type?: string;
   time: string;
   name?: string;
+  mem?: string;
   mig?: boolean;
   json?: boolean;
 }
@@ -26,16 +30,20 @@ export function registerRunCommand(program: Command) {
   program
     .command("run")
     .description("Run a command on Rivanna GPUs")
-    .argument("<command>", "command to run")
+    .argument("<command...>", "file path or command to run")
     .option("-g, --gpu <n>", "number of GPUs", "1")
     .option("-t, --type <type>", "GPU type")
     .option("--time <duration>", "total time needed", "2:59:00")
     .option("--name <name>", "job name")
+    .option(
+      "--mem <size>",
+      "total CPU memory (e.g., 200G). Auto-calculated if omitted",
+    )
     .option("--mig", "shortcut for --gpu 1 --type mig (free)")
     .option("--json", "output as JSON")
-    .action(async (command: string, options: RunOptions) => {
+    .action(async (commandParts: string[], options: RunOptions) => {
       try {
-        await runRun(command, options);
+        await runRun(commandParts, options);
       } catch (error) {
         if (options.json) {
           console.log(
@@ -51,8 +59,9 @@ export function registerRunCommand(program: Command) {
     });
 }
 
-async function runRun(command: string, options: RunOptions) {
+async function runRun(commandParts: string[], options: RunOptions) {
   const { config, slurm } = ensureSetup();
+  const ssh = slurm.sshClient;
   const isJson = !!options.json;
 
   let gpuCount = parseInt(options.gpu, 10);
@@ -68,6 +77,18 @@ async function runRun(command: string, options: RunOptions) {
   }
 
   const time = parseTime(options.time);
+
+  // Smart execution: detect local file → sync → deps → rewrite
+  const prepSpinner = isJson ? null : ora("Preparing...").start();
+  const execution = await prepareExecution(
+    commandParts,
+    config.connection.user,
+    ssh,
+    prepSpinner ?? undefined,
+  );
+  prepSpinner?.stop();
+
+  const command = execution ? execution.command : commandParts.join(" ");
 
   // Smart job naming
   let jobName = options.name;
@@ -92,6 +113,9 @@ async function runRun(command: string, options: RunOptions) {
     account: config.defaults.account,
     user: config.connection.user,
     command,
+    workDir: execution?.workDir,
+    venvPath: execution?.venvPath ?? undefined,
+    mem: options.mem,
     notifyToken: config.notifications.token,
   };
 
@@ -139,17 +163,30 @@ async function runRun(command: string, options: RunOptions) {
 
   monitorSpinner?.stop();
 
+  // Verify actual GPU hardware on the allocated node
+  await verifyAllocation(slurm, outcome);
+
   const winner = outcome.winner;
   const node = winner.nodes[0] ?? "unknown";
+  const gpuLabel = outcome.actualGPU
+    ? `${outcome.actualGPU.count}x ${outcome.actualGPU.type}`
+    : `${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()}`;
 
   if (isJson) {
     console.log(JSON.stringify(outcome, null, 2));
   } else {
-    console.log(
-      theme.success(
-        `✓ Running on ${node} (${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()})`,
-      ),
-    );
+    console.log(theme.success(`✓ Running on ${node} (${gpuLabel})`));
+    if (outcome.actualGPU?.mismatch) {
+      console.log(
+        theme.warning(
+          `  ⚠ GPU mismatch: requested ${winner.strategy.gpuType.toUpperCase()} but got ${outcome.actualGPU.type}`,
+        ),
+      );
+    }
+    const topoWarnings = getTopologyWarnings(winner.strategy);
+    for (const w of topoWarnings) {
+      console.log(theme.warning(`  ⚠ ${w}`));
+    }
   }
 
   // Tail logs until completion

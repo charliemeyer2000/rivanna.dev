@@ -5,6 +5,8 @@ import {
   allocate,
   submitStrategies,
   monitorAllocation,
+  verifyAllocation,
+  getTopologyWarnings,
 } from "@/core/allocator.ts";
 import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
@@ -12,6 +14,7 @@ import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
+import { prepareExecution } from "@/core/project.ts";
 
 interface UpOptions {
   gpu: string;
@@ -35,9 +38,12 @@ export function registerUpCommand(program: Command) {
       "GPU type: a100, a6000, a40, h200, v100, rtx3090, mig",
     )
     .option("--time <duration>", "total time needed: 2h, 24h, 3d", "2:59:00")
-    .option("--run <command>", "batch mode: run command then exit")
+    .option("--run <command>", "batch mode: run command/file then exit")
     .option("--name <name>", "job name")
-    .option("--mem <size>", "memory per CPU (e.g., 16G, 32G)")
+    .option(
+      "--mem <size>",
+      "total CPU memory (e.g., 200G). Auto-calculated if omitted",
+    )
     .option("--mig", "shortcut for --gpu 1 --type mig (free, instant)")
     .option("--dry-run", "show strategies without submitting")
     .option("--json", "output as JSON")
@@ -61,6 +67,7 @@ export function registerUpCommand(program: Command) {
 
 async function runUp(options: UpOptions) {
   const { config, slurm } = ensureSetup();
+  const ssh = slurm.sshClient;
   const isJson = !!options.json;
 
   // Parse options
@@ -81,20 +88,39 @@ async function runUp(options: UpOptions) {
 
   const time = parseTime(options.time);
 
+  // Smart execution: detect local file in --run, sync, deps
+  let command = options.run;
+  let workDir: string | undefined;
+  let venvPath: string | undefined;
+
+  if (options.run) {
+    const parts = options.run.split(/\s+/);
+    const prepSpinner = isJson ? null : ora("Preparing...").start();
+    const execution = await prepareExecution(
+      parts,
+      config.connection.user,
+      ssh,
+      prepSpinner ?? undefined,
+    );
+    prepSpinner?.stop();
+
+    if (execution) {
+      command = execution.command;
+      workDir = execution.workDir;
+      venvPath = execution.venvPath ?? undefined;
+    }
+  }
+
   // Smart job naming
   let jobName = options.name;
   if (!jobName) {
-    jobName = generateJobName(options.run);
-    if (
-      config.defaults.ai_naming &&
-      config.defaults.ai_api_key &&
-      options.run
-    ) {
+    jobName = generateJobName(command);
+    if (config.defaults.ai_naming && config.defaults.ai_api_key && command) {
       const apiKey = config.defaults.ai_api_key;
       const provider = apiKey.startsWith("sk-ant-")
         ? ("anthropic" as const)
         : ("openai" as const);
-      const aiName = await generateAIJobName(options.run, apiKey, provider);
+      const aiName = await generateAIJobName(command, apiKey, provider);
       if (aiName) jobName = `rv-${aiName}`;
     }
   }
@@ -107,9 +133,11 @@ async function runUp(options: UpOptions) {
     jobName,
     account: config.defaults.account,
     user: config.connection.user,
-    command: options.run,
-    memPerCpu: options.mem,
-    notifyUrl: config.notifications.enabled ? undefined : undefined, // Phase 8
+    command,
+    workDir,
+    venvPath,
+    mem: options.mem,
+    notifyUrl: config.notifications.enabled ? undefined : undefined,
     notifyToken: config.notifications.token,
   };
 
@@ -185,9 +213,15 @@ async function runUp(options: UpOptions) {
 
   monitorSpinner?.stop();
 
+  // Verify actual GPU hardware on the allocated node
+  await verifyAllocation(slurm, outcome);
+
   const winner = outcome.winner;
   const node = winner.nodes[0] ?? "unknown";
   const allocMs = outcome.allocationTimeMs;
+  const gpuLabel = outcome.actualGPU
+    ? `${outcome.actualGPU.count}x ${outcome.actualGPU.type}`
+    : `${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()}`;
 
   if (isJson) {
     console.log(JSON.stringify(outcome, null, 2));
@@ -196,9 +230,20 @@ async function runUp(options: UpOptions) {
 
   console.log(
     theme.success(
-      `\n✓ Allocated! ${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()} on ${node} (${(allocMs / 1000).toFixed(1)}s)`,
+      `\n✓ Allocated! ${gpuLabel} on ${node} (${(allocMs / 1000).toFixed(1)}s)`,
     ),
   );
+  if (outcome.actualGPU?.mismatch) {
+    console.log(
+      theme.warning(
+        `  ⚠ GPU mismatch: requested ${winner.strategy.gpuType.toUpperCase()} but got ${outcome.actualGPU.type}`,
+      ),
+    );
+  }
+  const topoWarnings = getTopologyWarnings(winner.strategy);
+  for (const w of topoWarnings) {
+    console.log(theme.warning(`  ⚠ ${w}`));
+  }
 
   // --- Attach or stream logs ---
   if (options.run) {

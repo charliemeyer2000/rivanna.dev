@@ -10,6 +10,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 1,
     maxWalltime: "3-00:00:00",
     perNode: 56,
+    nodeMemoryMB: 2_000_000, // ~2TB shared MIG node
   },
   rtx3090: {
     partition: "interactive-rtx3090",
@@ -20,6 +21,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 2,
     maxWalltime: "12:00:00",
     perNode: 4,
+    nodeMemoryMB: 257_000, // ~256GB
   },
   a6000: {
     partition: "gpu-a6000",
@@ -30,6 +32,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 8,
     maxWalltime: "3-00:00:00",
     perNode: 8,
+    nodeMemoryMB: 257_000, // ~256GB
   },
   a40: {
     partition: "gpu-a40",
@@ -40,6 +43,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 8,
     maxWalltime: "3-00:00:00",
     perNode: 8,
+    nodeMemoryMB: 257_000, // ~256GB
   },
   a100_40: {
     partition: "gpu-a100-40",
@@ -50,6 +54,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 8,
     maxWalltime: "3-00:00:00",
     perNode: 8,
+    nodeMemoryMB: 512_000, // ~512GB
   },
   a100_80: {
     partition: "gpu-a100-80",
@@ -63,6 +68,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     features: ["gpupod", "a100_80gb"],
     hasInfiniBand: true,
     hasNVLink: true,
+    nodeMemoryMB: 1_000_000, // ~1TB
   },
   v100: {
     partition: "gpu-v100",
@@ -73,6 +79,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 4,
     maxWalltime: "3-00:00:00",
     perNode: 4,
+    nodeMemoryMB: 384_000, // ~384GB
   },
   h200: {
     partition: "gpu-h200",
@@ -83,6 +90,7 @@ export const GPU_SPECS: Record<GPUType, GPUSpec> = {
     maxPerJob: 4,
     maxWalltime: "3-00:00:00",
     perNode: 8,
+    nodeMemoryMB: 1_500_000, // ~1.5TB
   },
 } as const;
 
@@ -101,6 +109,7 @@ export const PATHS = {
   rvDir: (user: string) => `/scratch/${user}/.rv`,
   logs: (user: string) => `/scratch/${user}/.rv/logs`,
   envFiles: (user: string) => `/scratch/${user}/.rv/env`,
+  envs: (user: string) => `/scratch/${user}/.rv/envs`,
   workspaces: (user: string) => `/scratch/${user}/rv-workspaces`,
   cache: {
     uv: (user: string) => `/scratch/${user}/.cache/uv`,

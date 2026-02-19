@@ -269,6 +269,17 @@ async function runInit(options: { force?: boolean }) {
 
     await rvSsh.exec(`mkdir -p ${cacheDirs.join(" ")}`);
 
+    // Symlink ~/.cache/huggingface → scratch so all tools share one cache
+    const hfScratch = PATHS.cache.hf(user);
+    await rvSsh.exec(
+      `if [ -d ~/.cache/huggingface ] && [ ! -L ~/.cache/huggingface ]; then ` +
+        `rsync -a --ignore-existing ~/.cache/huggingface/ ${hfScratch}/ && ` +
+        `rm -rf ~/.cache/huggingface && ` +
+        `ln -s ${hfScratch} ~/.cache/huggingface; ` +
+        `elif [ ! -e ~/.cache/huggingface ]; then ` +
+        `mkdir -p ~/.cache && ln -s ${hfScratch} ~/.cache/huggingface; fi`,
+    );
+
     // Add cache env vars to .bashrc (idempotently)
     const bashrcExports = [
       BASHRC_MARKER_START,

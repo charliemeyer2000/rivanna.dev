@@ -12,6 +12,7 @@ import { registerSyncCommand } from "./src/commands/sync.ts";
 import { registerForwardCommand } from "./src/commands/forward.ts";
 import { registerEnvCommand } from "./src/commands/env.ts";
 import { registerCostCommand } from "./src/commands/cost.ts";
+import { registerExecCommand } from "./src/commands/exec.ts";
 
 const pkg = require("./package.json");
 
@@ -36,6 +37,7 @@ async function main() {
   registerForwardCommand(program);
   registerEnvCommand(program);
   registerCostCommand(program);
+  registerExecCommand(program);
 
   program.parse(process.argv);
 }

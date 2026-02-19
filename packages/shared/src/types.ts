@@ -20,6 +20,8 @@ export interface GPUSpec {
   features?: readonly string[];
   hasInfiniBand?: boolean;
   hasNVLink?: boolean;
+  /** Total CPU memory on the node in MB (from sinfo %m) */
+  nodeMemoryMB: number;
 }
 
 // --- Slurm data types ---
@@ -108,12 +110,14 @@ export interface SbatchOptions {
   partition: string;
   gres: string;
   time: string;
+  timeMin?: string;
   account: string;
   jobName: string;
   nodes?: number;
   ntasks?: number;
   cpusPerTask?: number;
   memPerCpu?: string;
+  mem?: string;
   output?: string;
   error?: string;
   features?: string[];
@@ -134,6 +138,7 @@ export interface TemplateOptions extends SbatchOptions {
   ncclDebug?: boolean;
   rayPort?: number;
   dashboardPort?: number;
+  venvPath?: string;
 }
 
 export interface SystemState {
@@ -167,7 +172,9 @@ export interface UserRequest {
   user: string;
   workDir?: string;
   moduleLoads?: string[];
-  memPerCpu?: string;
+  /** User-specified total memory (--mem), overrides auto-calculation */
+  mem?: string;
+  venvPath?: string;
   notifyUrl?: string;
   notifyToken?: string;
 }
@@ -187,6 +194,8 @@ export interface Strategy {
   gres: string;
   walltime: string;
   walltimeSeconds: number;
+  timeMin?: string;
+  timeMinSeconds?: number;
   gpusPerNode: number;
   nodes: number;
   topology: TopologyKind;
@@ -217,6 +226,14 @@ export interface AllocationOutcome {
   winner: StrategySubmission;
   allSubmissions: StrategySubmission[];
   allocationTimeMs: number;
+  /** Actual GPU hardware detected on the allocated node(s) */
+  actualGPU?: {
+    type: string;
+    vramGB?: number;
+    count: number;
+    node: string;
+    mismatch: boolean;
+  };
 }
 
 // --- Port forward tracking ---

@@ -36,7 +36,9 @@ const COARSE_PROBES_SECONDS = [
 const REFINE_STEP_SECONDS = 900; // 15 minutes
 const MAX_STRATEGIES = 16;
 const BACKFILL_THRESHOLD_SECONDS = 300; // 5 minutes
-const DEFAULT_POLL_INTERVAL_MS = 5000;
+const INITIAL_POLL_MS = 2000;
+const MAX_POLL_MS = 10_000;
+const POLL_BACKOFF = 1.5;
 const MAX_POLL_DURATION_MS = 7_200_000; // 2 hours
 
 // --------------- Helpers ---------------
@@ -357,6 +359,13 @@ export function generateStrategies(
           : false;
         const kind: StrategyKind = backfillEligible ? "backfill" : "direct";
 
+        // --time-min: for non-backfill strategies with a backfill window,
+        // tell Slurm we'll accept any gap >= backfill ceiling
+        const timeMinSeconds =
+          !backfillEligible && probe && probe.maxBackfillSeconds > 0
+            ? probe.maxBackfillSeconds
+            : undefined;
+
         strategies.push({
           id: nextId(),
           kind,
@@ -365,16 +374,20 @@ export function generateStrategies(
           gres: gresStr,
           walltime: request.totalTime,
           walltimeSeconds,
+          timeMin: timeMinSeconds ? formatSeconds(timeMinSeconds) : undefined,
+          timeMinSeconds,
           gpusPerNode: gpuCount,
           nodes: 1,
           topology: "single-node",
           checkpointRestart: false,
           estimatedSU: suPerHour * (walltimeSeconds / 3600),
-          estimatedWaitSeconds: estimateWaitFromProbe(probe, walltimeSeconds),
-          backfillEligible,
+          estimatedWaitSeconds: timeMinSeconds
+            ? estimateWaitFromProbe(probe, timeMinSeconds)
+            : estimateWaitFromProbe(probe, walltimeSeconds),
+          backfillEligible: backfillEligible || !!timeMinSeconds,
           features: spec.features ? [...spec.features] : undefined,
           score: 0,
-          label: `${gpuCount}x ${gpuType.toUpperCase()}, ${kind}, ${request.totalTime}`,
+          label: `${gpuCount}x ${gpuType.toUpperCase()}, ${kind}${timeMinSeconds ? "+timemin" : ""}, ${request.totalTime}`,
         });
       }
 
@@ -421,6 +434,11 @@ export function generateStrategies(
           : false;
         const kind: StrategyKind = backfillEligible ? "backfill" : "direct";
 
+        const timeMinSeconds =
+          !backfillEligible && probe && probe.maxBackfillSeconds > 0
+            ? probe.maxBackfillSeconds
+            : undefined;
+
         strategies.push({
           id: nextId(),
           kind,
@@ -429,16 +447,20 @@ export function generateStrategies(
           gres: multiGres,
           walltime: request.totalTime,
           walltimeSeconds,
+          timeMin: timeMinSeconds ? formatSeconds(timeMinSeconds) : undefined,
+          timeMinSeconds,
           gpusPerNode,
           nodes: 2,
           topology: "multi-node",
           checkpointRestart: false,
           estimatedSU: suPerHour * (walltimeSeconds / 3600),
-          estimatedWaitSeconds: estimateWaitFromProbe(probe, walltimeSeconds),
-          backfillEligible,
+          estimatedWaitSeconds: timeMinSeconds
+            ? estimateWaitFromProbe(probe, timeMinSeconds)
+            : estimateWaitFromProbe(probe, walltimeSeconds),
+          backfillEligible: backfillEligible || !!timeMinSeconds,
           features: spec.features ? [...spec.features] : undefined,
           score: 0,
-          label: `${gpuCount}x ${gpuType.toUpperCase()} (2x${gpusPerNode}), multi-node, ${request.totalTime}`,
+          label: `${gpuCount}x ${gpuType.toUpperCase()} (2x${gpusPerNode}), multi-node${timeMinSeconds ? "+timemin" : ""}, ${request.totalTime}`,
         });
       }
 
@@ -611,20 +633,45 @@ export function rankStrategies(
  * Generate the Slurm batch script for a strategy.
  */
 export function buildScript(strategy: Strategy, request: UserRequest): string {
+  // Auto-set total memory (--mem) if user didn't specify.
+  // Give a proportional share of node memory based on GPU fraction requested,
+  // with extra overhead. ML workloads need substantial CPU memory for data
+  // loading, NCCL buffers, model staging, and preprocessing.
+  // e.g., 1 A100-80 on a 1TB node → ~190G, 8 A100-80 → ~900G
+  let mem: string;
+  if (request.mem) {
+    // User explicitly set --mem, use as-is
+    mem = request.mem;
+  } else {
+    // Auto-calculate: proportional share of node memory + overhead.
+    // ML workloads need substantial CPU memory for data loading,
+    // NCCL buffers, model staging, and preprocessing.
+    // e.g., 1 A100-80 on 1TB node → ~183G, 8 A100-80 → ~878G
+    const spec = GPU_SPECS[strategy.gpuType];
+    const nodeMemGB = Math.floor(spec.nodeMemoryMB / 1024);
+    const gpuFraction = strategy.gpusPerNode / spec.perNode;
+    const proportionalGB = Math.floor(nodeMemGB * gpuFraction);
+    const withOverhead = Math.floor(proportionalGB * 1.5);
+    const cappedGB = Math.min(withOverhead, Math.floor(nodeMemGB * 0.9));
+    mem = `${Math.max(cappedGB, 16)}G`;
+  }
+
   const templateOpts: TemplateOptions = {
     partition: strategy.partition,
     gres: strategy.gres,
     time: strategy.walltime,
+    timeMin: strategy.timeMin,
     account: request.account,
     jobName: request.jobName,
     user: request.user,
     command: request.command ?? "/bin/bash",
     nodes: strategy.nodes > 1 ? strategy.nodes : undefined,
     ntasks: strategy.nodes > 1 ? strategy.nodes : undefined,
-    memPerCpu: request.memPerCpu,
+    mem,
     features: strategy.features,
     workDir: request.workDir,
     moduleLoads: request.moduleLoads,
+    venvPath: request.venvPath,
     notifyUrl: request.notifyUrl,
     notifyToken: request.notifyToken,
   };
@@ -729,11 +776,10 @@ export async function monitorAllocation(
   slurm: SlurmClient,
   submissions: StrategySubmission[],
   options?: {
-    pollIntervalMs?: number;
     onUpdate?: (submissions: StrategySubmission[]) => void;
   },
 ): Promise<AllocationOutcome> {
-  const pollInterval = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+  let pollInterval = INITIAL_POLL_MS;
   const startTime = Date.now();
 
   const submissionMap = new Map<string, StrategySubmission>();
@@ -802,5 +848,92 @@ export async function monitorAllocation(
     }
 
     await sleep(pollInterval);
+    pollInterval = Math.min(pollInterval * POLL_BACKOFF, MAX_POLL_MS);
   }
+}
+
+/**
+ * Generate topology/NCCL warnings for the winning strategy.
+ * Returns an array of warning strings to display.
+ */
+export function getTopologyWarnings(strategy: Strategy): string[] {
+  const warnings: string[] = [];
+  const spec = GPU_SPECS[strategy.gpuType];
+
+  if (strategy.topology === "multi-node") {
+    warnings.push(
+      "Multi-node allocation: inter-node GPU communication uses network (InfiniBand/Ethernet).",
+    );
+    if (!spec.hasInfiniBand) {
+      warnings.push(
+        "This partition has no InfiniBand — multi-node NCCL will be slow. Consider single-node.",
+      );
+    }
+    warnings.push(
+      "Ensure your code uses distributed training (PyTorch DDP, DeepSpeed, etc.).",
+    );
+  }
+
+  if (strategy.gpusPerNode > 1 && !spec.hasNVLink) {
+    warnings.push(
+      "Multi-GPU on this partition uses PCIe (no NVLink). Tensor parallelism will be slower than on A100-80.",
+    );
+  }
+
+  return warnings;
+}
+
+// Map sinfo gres type strings → our GPUType
+const GRES_TO_GPU_TYPE: Record<string, GPUType> = {
+  a6000: "a6000",
+  a40: "a40",
+  a100: "a100_80", // ambiguous, but sinfo doesn't distinguish 40 vs 80
+  v100: "v100",
+  h200: "h200",
+  rtx3090: "rtx3090",
+  "1g.10gb": "mig",
+};
+
+// Friendly names for display
+const GRES_DISPLAY_NAMES: Record<string, string> = {
+  a6000: "A6000",
+  a40: "A40",
+  a100: "A100",
+  v100: "V100",
+  h200: "H200",
+  rtx3090: "RTX 3090",
+  "1g.10gb": "MIG",
+};
+
+/**
+ * Verify the actual GPU hardware on the allocated node.
+ * Returns GPU info with mismatch flag if hardware differs from strategy.
+ */
+export async function verifyAllocation(
+  slurm: SlurmClient,
+  outcome: AllocationOutcome,
+): Promise<AllocationOutcome> {
+  const node = outcome.winner.nodes[0];
+  if (!node) return outcome;
+
+  const nodeInfo = await slurm.getNodeInfo(node);
+  if (!nodeInfo) return outcome;
+
+  const actualType = GRES_TO_GPU_TYPE[nodeInfo.gresType];
+  const strategyType = outcome.winner.strategy.gpuType;
+
+  // Check mismatch: for a100, need to also check against a100_40
+  const isMismatch =
+    !!actualType &&
+    actualType !== strategyType &&
+    !(nodeInfo.gresType === "a100" && strategyType === "a100_40");
+
+  outcome.actualGPU = {
+    type: GRES_DISPLAY_NAMES[nodeInfo.gresType] ?? nodeInfo.gresType,
+    count: outcome.winner.strategy.gpusPerNode * outcome.winner.strategy.nodes,
+    node,
+    mismatch: isMismatch,
+  };
+
+  return outcome;
 }

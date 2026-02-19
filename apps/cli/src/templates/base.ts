@@ -12,6 +12,7 @@ export function generatePreamble(opts: TemplateOptions): string {
   lines.push(`#SBATCH -p ${opts.partition}`);
   lines.push(`#SBATCH --gres=${opts.gres}`);
   lines.push(`#SBATCH -t ${opts.time}`);
+  if (opts.timeMin) lines.push(`#SBATCH --time-min=${opts.timeMin}`);
   lines.push(`#SBATCH -A ${opts.account}`);
   lines.push(`#SBATCH -J ${opts.jobName}`);
 
@@ -23,7 +24,9 @@ export function generatePreamble(opts: TemplateOptions): string {
   if (opts.ntasks) lines.push(`#SBATCH --ntasks=${opts.ntasks}`);
   if (opts.cpusPerTask)
     lines.push(`#SBATCH --cpus-per-task=${opts.cpusPerTask}`);
-  if (opts.memPerCpu) lines.push(`#SBATCH --mem-per-cpu=${opts.memPerCpu}`);
+  if (opts.mem) lines.push(`#SBATCH --mem=${opts.mem}`);
+  else if (opts.memPerCpu)
+    lines.push(`#SBATCH --mem-per-cpu=${opts.memPerCpu}`);
   if (opts.exclusive) lines.push("#SBATCH --exclusive");
   if (opts.features && opts.features.length > 0) {
     lines.push(`#SBATCH --constraint=${opts.features.join("&")}`);
@@ -63,11 +66,26 @@ export function generatePreamble(opts: TemplateOptions): string {
     lines.push("");
   }
 
-  // Cache env vars
+  // Activate project venv (if deps were resolved)
+  if (opts.venvPath) {
+    lines.push(`# Activate project environment`);
+    lines.push(`source "${opts.venvPath}/bin/activate"`);
+    lines.push("");
+  }
+
+  // Cache and checkpoint directories
   lines.push(`# Cache directories`);
   lines.push(`export UV_CACHE_DIR=${PATHS.cache.uv(opts.user)}`);
   lines.push(`export PIP_CACHE_DIR=${PATHS.cache.pip(opts.user)}`);
   lines.push(`export HF_HOME=${PATHS.cache.hf(opts.user)}`);
+  lines.push("");
+
+  // Framework checkpoint defaults → scratch (avoid filling home dir)
+  const checkpointDir = `${PATHS.rvDir(opts.user)}/checkpoints/$SLURM_JOB_NAME`;
+  lines.push(`# Default checkpoint directory (frameworks will use this)`);
+  lines.push(`export RV_CHECKPOINT_DIR="${checkpointDir}"`);
+  lines.push(`export CHECKPOINT_DIR="${checkpointDir}"`);
+  lines.push(`mkdir -p "${checkpointDir}" 2>/dev/null || true`);
   lines.push("");
 
   // Working directory

@@ -85,6 +85,18 @@ export class SlurmClient {
     return parseSacct(output);
   }
 
+  async getNodeInfo(nodeName: string): Promise<NodeState | null> {
+    try {
+      const output = await this.ssh.exec(
+        `sinfo -n ${nodeName} -o "${SINFO_FORMAT}" --noheader`,
+      );
+      const nodes = parseSinfo(output);
+      return nodes[0] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   // --- Action methods ---
 
   async submitJob(script: string): Promise<string> {
