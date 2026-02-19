@@ -42,6 +42,14 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 - 2026-02-18: GPU count must not be silently capped — skip types that can't fulfill the request entirely.
 - 2026-02-18: Rivanna CPU partitions: `standard` (7d, 1 node, 40 CPU, 768GB), `parallel` (3d, 2-64 nodes, 96 CPU). DefMemPerCPU=4000 across all. CPU-only jobs are a separate codepath.
 - 2026-02-18: No Ink/React in either project — use ora + chalk + @inquirer/prompts for all CLI UI.
+- 2026-02-18: Node memory from sinfo: A100-80 ~1TB, A6000 ~256GB, H200 ~1.5TB. Use for auto `--mem` calculation.
+- 2026-02-18: GPUSpec has `nodeMemoryMB` field. Auto-mem = (nodeMemGB × gpuFraction × 1.5), capped at 90% of node.
+- 2026-02-18: `theme.warning` not `theme.warn` — the theme object uses `warning`, `success`, `error`, `info`, `muted`, `accent`, `emphasis`.
+- 2026-02-18: `allocations` output is a table: `account_name  allocation  used  balance`. Regex: `/^(\S+)\s+(\d+)\s+\d+\s+(\d+)/`.
+- 2026-02-18: For safe remote rc file writes, use `sed -i '/marker_start/,/marker_end/d'` + `printf >> file`. Never `cat >`.
+- 2026-02-18: SSH key detection should check id_ed25519, id_rsa, id_ecdsa, id_ecdsa_sk, id_ed25519_sk — not just ed25519.
+- 2026-02-18: `testKeyAuth()` with BatchMode=yes tests auth without password prompt. Use before `ssh-copy-id` to skip if already authorized.
+- 2026-02-18: Slurm batch scripts always source `.bashrc` (bash). Write cache env exports to `.bashrc` regardless of user's login shell.
 
 ---
 
@@ -61,10 +69,11 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
    - [Phase 4: Slurm Parsers & Templates](#phase-4-slurm-parsers--templates) ✅
    - [Phase 5: The Allocator Brain](#phase-5-the-allocator-brain) ✅
    - [Phase 6: Core Commands — up, run, ps, stop, attach](#phase-6-core-commands--up-run-ps-stop-attach) ✅
-   - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ← **next**
-   - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email)
+   - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ✅
+   - [Phase 7.5: Smart Execution, GPU Verification, Init Hardening](#phase-75-smart-execution-gpu-verification-init-hardening) ✅
+   - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email) ← **next**
    - [Phase 9: Site — Landing, Docs, Install API](#phase-9-site--landing-docs-install-api)
-   - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline)
+   - [Phase 10: CI/CD & Release Pipeline](#phase-10-cicd--release-pipeline) ✅
    - [Phase 11: Testing & Hardening](#phase-11-testing--hardening)
 
 ---
@@ -77,7 +86,7 @@ The CLI runs on the user's local machine (macOS/Linux) and communicates with Riv
 
 **Two deliverables:**
 
-- `apps/cli` — The `rv` command-line tool (TypeScript, Commander + Ink, compiled to standalone binary via `bun build --compile`)
+- `apps/cli` — The `rv` command-line tool (TypeScript, Commander + ora/chalk, compiled to standalone binary via `bun build --compile`)
 - `apps/site` — Landing page, docs, install script host, notification webhook API (Next.js on Vercel at `rivanna.dev`)
 
 **Distribution:** Binary via `curl -fsSL https://rivanna.dev/install.sh | bash`. The site's API proxies the latest GitHub Release binary. NOT an npm package.
@@ -290,15 +299,18 @@ rivanna.dev/
 │   │   │   │   ├── forward.ts
 │   │   │   │   ├── env.ts
 │   │   │   │   ├── cost.ts
+│   │   │   │   ├── exec.ts          # run commands on login node (no GPU)
 │   │   │   │   └── notify.ts
 │   │   │   ├── core/
 │   │   │   │   ├── ssh.ts           # SSH connection manager (ControlMaster)
 │   │   │   │   ├── slurm.ts         # sbatch/squeue/sinfo/sacct wrappers
 │   │   │   │   ├── allocator.ts     # THE ALLOCATOR BRAIN
 │   │   │   │   ├── config.ts        # ~/.rv/config.toml reader/writer
-│   │   │   │   ├── sync.ts          # rsync wrapper
-│   │   │   │   ├── notify.ts        # notification client (Resend email)
-│   │   │   │   └── secrets.ts       # encrypted env var storage
+│   │   │   │   ├── project.ts       # smart execution: detect file, sync, deps, rewrite
+│   │   │   │   ├── env-store.ts     # env var storage (~/.rv/env.json)
+│   │   │   │   ├── forward-store.ts # port forward tracking (~/.rv/forwards.json)
+│   │   │   │   ├── job-naming.ts    # AI + heuristic job naming
+│   │   │   │   └── log-tailer.ts    # real-time log streaming for batch jobs
 │   │   │   ├── parsers/
 │   │   │   │   ├── sinfo.ts         # parse sinfo node/GPU state
 │   │   │   │   ├── squeue.ts        # parse squeue job listings
@@ -312,11 +324,11 @@ rivanna.dev/
 │   │   │   │   ├── multi-node.ts    # multi-node distributed
 │   │   │   │   ├── ray.ts           # Ray cluster setup
 │   │   │   │   └── checkpoint.ts    # checkpoint-restart wrapper
-│   │   │   └── ui/
-│   │   │       ├── allocating.tsx   # Ink: live allocation progress
-│   │   │       ├── status.tsx       # Ink: dashboard display
-│   │   │       ├── spinner.tsx      # Ink: generic spinner
-│   │   │       └── table.tsx        # Ink: table display
+│   │   │   └── lib/
+│   │   │       ├── constants.ts     # SSH paths, format strings, defaults
+│   │   │       ├── errors.ts        # typed error classes (VPNError, etc.)
+│   │   │       ├── setup.ts         # ensureSetup(), parseTime()
+│   │   │       └── theme.ts         # chalk theme (success, warning, error, etc.)
 │   │   └── dist/                    # compiled binaries (gitignored)
 │   │
 │   └── site/                        # Next.js on Vercel
@@ -903,7 +915,7 @@ Uses `srun --jobid=<JOB> --overlap --pty /bin/bash`.
 
 ---
 
-### Phase 7: Supporting Commands — ssh, logs, status, sync, forward, env, cost
+### Phase 7: Supporting Commands — ssh, logs, status, sync, forward, env, cost ✅
 
 **Goal:** All remaining CLI commands.
 
@@ -1020,6 +1032,26 @@ Balance after: 8,691,798 / 8,742,210 SUs (99.4%)
 
 ---
 
+### Phase 7.5: Smart Execution, GPU Verification, Init Hardening ✅
+
+**Goal:** Post-stress-test improvements discovered during real-world vLLM/multi-GPU testing.
+
+**Completed work:**
+
+1. **Smart execution** (`core/project.ts`): `rv run train.py` detects local file, rsyncs project, discovers deps, creates remote venv via uv, rewrites command. `rv exec` command for login-node-only tasks.
+2. **GPU verification** (`allocator.ts`): After allocation, queries actual GPU hardware on the node via `sinfo -n <node>`. Reports mismatches (e.g., requested A100 but got scheduled on wrong node).
+3. **Auto-memory** (`allocator.ts`, `base.ts`): Calculates `--mem` from proportional node memory share (1.5x proportional, capped at 90% of node). Prevents OOM kills. Overridable with `--mem`.
+4. **Topology warnings** (`allocator.ts`): Warns about multi-node NCCL over network, missing InfiniBand, missing NVLink.
+5. **AI job naming** (`core/job-naming.ts`): Optional AI-generated job names via Anthropic/OpenAI API.
+6. **Log tailing** (`core/log-tailer.ts`): Real-time log streaming for batch jobs.
+7. **Checkpoint env vars** (`base.ts`): `RV_CHECKPOINT_DIR` and `CHECKPOINT_DIR` set automatically.
+8. **`--time-min`** for backfill: Strategies set `--time-min` to backfill ceiling so Slurm can schedule into variable-length gaps.
+9. **Resumable init** (`init.ts`): Config saved early for resumability. Detects existing SSH keys (ed25519/rsa/ecdsa), tests auth before ssh-copy-id, retries 3x. VPN check before any SSH.
+10. **Shell detection** (`init.ts`): Detects remote shell (bash/zsh/fish), writes cache env vars to correct rc file. Always writes `.bashrc` for Slurm compatibility.
+11. **VPN status in `rv status`** (`status.ts`): Graceful handling of SSH failures — shows "DISCONNECTED" or "AUTH FAILED" instead of crashing.
+
+---
+
 ### Phase 8: Notifications — Resend Email
 
 **Goal:** Email notifications for job events via Resend.
@@ -1124,7 +1156,7 @@ Mirror `~/all/uvacompute/apps/site/public/install.sh`:
 
 ---
 
-### Phase 10: CI/CD & Release Pipeline
+### Phase 10: CI/CD & Release Pipeline ✅
 
 **Goal:** GitHub Actions workflow for CLI releases.
 
