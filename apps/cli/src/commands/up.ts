@@ -138,6 +138,7 @@ async function runUp(options: UpOptions) {
     venvPath,
     mem: options.mem,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
+    sharedHfCache: config.shared?.hf_cache,
   };
 
   // --- Allocate ---

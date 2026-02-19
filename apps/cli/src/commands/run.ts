@@ -117,6 +117,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     venvPath: execution?.venvPath ?? undefined,
     mem: options.mem,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
+    sharedHfCache: config.shared?.hf_cache,
   };
 
   const spinner = isJson ? null : ora("Probing cluster...").start();

@@ -58,6 +58,7 @@ const docNavItems = [
       { label: "ai naming", id: "ai-naming" },
       { label: "environment variables", id: "environment-variables" },
       { label: "scratch keepalive", id: "scratch-keepalive" },
+      { label: "shared storage", id: "shared-storage" },
       { label: "paths", id: "paths" },
     ],
   },

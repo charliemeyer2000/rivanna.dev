@@ -33,6 +33,11 @@ export const RvConfigSchema = z.object({
       enabled: z.boolean().default(true),
     })
     .default({ enabled: true }),
+  shared: z
+    .object({
+      hf_cache: z.string().optional(),
+    })
+    .optional(),
 });
 
 export function loadConfig(): RvConfig | null {

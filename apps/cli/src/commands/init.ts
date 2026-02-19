@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import ora from "ora";
-import { input, select } from "@inquirer/prompts";
+import { confirm, input, select } from "@inquirer/prompts";
 import type { RvConfig } from "@rivanna/shared";
 import { PATHS } from "@rivanna/shared";
 import { SSHClient } from "@/core/ssh.ts";
@@ -263,6 +263,41 @@ function parseAccountsFromAllocations(
   return accounts;
 }
 
+// ═══════════════ Group Storage Detection ═══════════════
+
+/**
+ * Detect shared group directories the user has access to.
+ * Parses `hdquota` output for /standard/ and /project/ mounts.
+ */
+async function detectGroupStorage(
+  ssh: SSHClient,
+): Promise<{ path: string; type: string }[]> {
+  try {
+    const output = await ssh.exec("hdquota 2>/dev/null || true");
+    const dirs: { path: string; type: string }[] = [];
+
+    for (const line of output.split("\n")) {
+      const trimmed = line.trim();
+      if (
+        !trimmed ||
+        trimmed.startsWith("Storage") ||
+        trimmed.startsWith("---")
+      )
+        continue;
+
+      // Match lines with /standard/ or /project/ paths
+      const match = trimmed.match(/^(.+?)\s+(\/(?:standard|project)\/\S+)/);
+      if (match) {
+        dirs.push({ path: match[2]!, type: match[1]!.trim() });
+      }
+    }
+
+    return dirs;
+  } catch {
+    return [];
+  }
+}
+
 // ═══════════════ Remote Environment Setup ═══════════════
 
 /**
@@ -273,6 +308,7 @@ function parseAccountsFromAllocations(
 async function ensureRemoteSetup(
   ssh: SSHClient,
   user: string,
+  sharedHfCache?: string,
 ): Promise<string> {
   // Create all required directories
   const dirs = [
@@ -285,17 +321,20 @@ async function ensureRemoteSetup(
     PATHS.envs(user),
     PATHS.workspaces(user),
   ];
+  if (sharedHfCache) dirs.push(sharedHfCache);
   await ssh.exec(`mkdir -p ${dirs.join(" ")}`);
 
-  // Symlink ~/.cache/huggingface → scratch so all tools share one cache
-  const hfScratch = PATHS.cache.hf(user);
+  // Symlink ~/.cache/huggingface → the active HF cache so all tools share one location
+  const hfTarget = sharedHfCache ?? PATHS.cache.hf(user);
   await ssh.exec(
     `if [ -d ~/.cache/huggingface ] && [ ! -L ~/.cache/huggingface ]; then ` +
-      `rsync -a --ignore-existing ~/.cache/huggingface/ ${hfScratch}/ && ` +
+      `rsync -a --ignore-existing ~/.cache/huggingface/ ${hfTarget}/ && ` +
       `rm -rf ~/.cache/huggingface && ` +
-      `ln -s ${hfScratch} ~/.cache/huggingface; ` +
+      `ln -s ${hfTarget} ~/.cache/huggingface; ` +
       `elif [ ! -e ~/.cache/huggingface ]; then ` +
-      `mkdir -p ~/.cache && ln -s ${hfScratch} ~/.cache/huggingface; fi`,
+      `mkdir -p ~/.cache && ln -s ${hfTarget} ~/.cache/huggingface; ` +
+      `elif [ -L ~/.cache/huggingface ]; then ` +
+      `rm ~/.cache/huggingface && ln -s ${hfTarget} ~/.cache/huggingface; fi`,
   );
 
   // Detect remote login shell
@@ -303,7 +342,7 @@ async function ensureRemoteSetup(
   const shell = remoteShell.trim();
 
   // Build env export lines (bash/zsh syntax)
-  const exportLines = CACHE_ENV_EXPORTS(user);
+  const exportLines = CACHE_ENV_EXPORTS(user, sharedHfCache);
 
   // Always write to .bashrc — Slurm batch scripts source it
   await upsertShellBlock(ssh, "~/.bashrc", exportLines);
@@ -316,10 +355,11 @@ async function ensureRemoteSetup(
   // If fish, write with fish syntax to config.fish
   if (shell === "fish") {
     await ssh.exec("mkdir -p ~/.config/fish");
+    const hfHome = sharedHfCache ?? `/scratch/${user}/.cache/huggingface`;
     const fishLines = [
       `set -gx UV_CACHE_DIR /scratch/${user}/.cache/uv`,
       `set -gx PIP_CACHE_DIR /scratch/${user}/.cache/pip`,
-      `set -gx HF_HOME /scratch/${user}/.cache/huggingface`,
+      `set -gx HF_HOME ${hfHome}`,
     ];
     await upsertShellBlock(ssh, "~/.config/fish/config.fish", fishLines);
   }
@@ -372,7 +412,11 @@ async function runInit(options: { force?: boolean }) {
       // Ensure remote environment is current (idempotent, fast)
       try {
         const ssh = new SSHClient({ host: existingConfig.connection.host });
-        await ensureRemoteSetup(ssh, existingConfig.connection.user);
+        await ensureRemoteSetup(
+          ssh,
+          existingConfig.connection.user,
+          existingConfig.shared?.hf_cache,
+        );
       } catch {
         // Non-fatal
       }
@@ -585,15 +629,65 @@ async function runInit(options: { force?: boolean }) {
     }
   }
 
-  // ── Step 8: Save final config ──
+  // ── Step 8: Shared group storage detection ──
+  const existingShared = existingConfig?.shared?.hf_cache;
+  if (!existingShared) {
+    const groupDirs = await detectGroupStorage(rvSsh);
+    if (groupDirs.length > 0) {
+      console.log(
+        theme.muted(
+          `\nDetected shared group storage: ${groupDirs.map((d) => d.path).join(", ")}`,
+        ),
+      );
+      const useShared = await confirm({
+        message:
+          "Share HuggingFace model cache with your lab group? (saves disk, avoids re-downloading)",
+        default: true,
+      });
+
+      if (useShared) {
+        let groupDir: string;
+        if (groupDirs.length === 1) {
+          groupDir = groupDirs[0]!.path;
+        } else {
+          groupDir = await select({
+            message: "Which group directory?",
+            choices: groupDirs.map((d) => ({
+              name: `${d.path} (${d.type})`,
+              value: d.path,
+            })),
+          });
+        }
+
+        const sharedHfPath = `${groupDir}/.cache/huggingface`;
+        config.shared = { hf_cache: sharedHfPath };
+
+        // Create the shared cache dir (group-writable)
+        const mkdirSpinner = ora("Setting up shared model cache...").start();
+        try {
+          await rvSsh.exec(
+            `mkdir -p "${sharedHfPath}" && chmod g+rwxs "${sharedHfPath}" 2>/dev/null || true`,
+          );
+          mkdirSpinner.succeed(`Shared HF cache: ${sharedHfPath}`);
+        } catch {
+          mkdirSpinner.warn(
+            "Could not create shared cache dir (check group permissions)",
+          );
+          config.shared = undefined;
+        }
+      }
+    }
+  }
+
+  // ── Step 9: Save final config ──
   config.defaults.account = account;
   saveConfig(config);
   console.log(theme.success("Config saved to ~/.rv/config.toml"));
 
-  // ── Step 9: Remote environment setup (idempotent) ──
+  // ── Step 10: Remote environment setup (idempotent) ──
   const setupSpinner = ora("Setting up remote environment...").start();
   try {
-    const shell = await ensureRemoteSetup(rvSsh, user);
+    const shell = await ensureRemoteSetup(rvSsh, user, config.shared?.hf_cache);
     setupSpinner.succeed("Remote environment configured");
     if (shell !== "bash") {
       console.log(

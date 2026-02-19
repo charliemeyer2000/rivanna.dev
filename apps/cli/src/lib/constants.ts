@@ -25,10 +25,10 @@ export const SSH_CONFIG_MARKER_END = "# --- end rv-hpc ---";
 export const BATCH_DELIMITER = "___RV_DELIM___";
 
 // Cache env var exports for remote .bashrc
-export const CACHE_ENV_EXPORTS = (user: string) => [
+export const CACHE_ENV_EXPORTS = (user: string, sharedHfCache?: string) => [
   `export UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
   `export PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
-  `export HF_HOME=/scratch/${user}/.cache/huggingface`,
+  `export HF_HOME=${sharedHfCache ?? `/scratch/${user}/.cache/huggingface`}`,
 ];
 
 // .bashrc block markers

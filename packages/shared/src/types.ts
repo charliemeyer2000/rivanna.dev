@@ -140,6 +140,7 @@ export interface TemplateOptions extends SbatchOptions {
   rayPort?: number;
   dashboardPort?: number;
   venvPath?: string;
+  sharedHfCache?: string;
 }
 
 export interface SystemState {
@@ -178,6 +179,7 @@ export interface UserRequest {
   venvPath?: string;
   notifyUrl?: string;
   notifyToken?: string;
+  sharedHfCache?: string;
 }
 
 export interface BackfillProbe {
@@ -286,5 +288,8 @@ export interface RvConfig {
   };
   scratch_keepalive?: {
     enabled: boolean;
+  };
+  shared?: {
+    hf_cache?: string;
   };
 }

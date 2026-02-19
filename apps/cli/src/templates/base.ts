@@ -91,7 +91,9 @@ export function generatePreamble(opts: TemplateOptions): string {
   lines.push(`# Cache directories`);
   lines.push(`export UV_CACHE_DIR=${PATHS.cache.uv(opts.user)}`);
   lines.push(`export PIP_CACHE_DIR=${PATHS.cache.pip(opts.user)}`);
-  lines.push(`export HF_HOME=${PATHS.cache.hf(opts.user)}`);
+  lines.push(
+    `export HF_HOME=${opts.sharedHfCache ?? PATHS.cache.hf(opts.user)}`,
+  );
   lines.push(`export VLLM_CACHE_DIR=${PATHS.rvDir(opts.user)}/cache/vllm`);
   lines.push("");
 

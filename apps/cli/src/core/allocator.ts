@@ -688,6 +688,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     venvPath: request.venvPath,
     notifyUrl: request.notifyUrl,
     notifyToken: request.notifyToken,
+    sharedHfCache: request.sharedHfCache,
   };
 
   if (strategy.checkpointRestart) {

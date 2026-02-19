@@ -53,6 +53,7 @@ function maybeKeepalive(ssh: SSHClient, config: RvConfig): void {
     `${scratch}/.cache/pip`,
     `${scratch}/.cache/huggingface`,
   ];
+  if (config.shared?.hf_cache) dirs.push(config.shared.hf_cache);
 
   // Fire-and-forget: touch all files in critical directories
   const cmd = dirs
