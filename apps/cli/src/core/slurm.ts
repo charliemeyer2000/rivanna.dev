@@ -85,6 +85,30 @@ export class SlurmClient {
     return parseSacct(output);
   }
 
+  /**
+   * Query scontrol for a specific job's state. Unlike sacct, this queries
+   * the Slurm controller directly with zero accounting lag. Returns null
+   * if the job has been purged from controller memory (typically after
+   * several minutes).
+   */
+  async getJobState(
+    jobId: string,
+  ): Promise<{ state: string; nodes?: string } | null> {
+    try {
+      const output = await this.ssh.exec(`scontrol show job ${jobId} 2>&1`);
+      if (output.includes("Invalid job id")) return null;
+      const stateMatch = output.match(/JobState=(\S+)/);
+      const nodeMatch = output.match(/NodeList=(\S+)/);
+      if (!stateMatch) return null;
+      return {
+        state: stateMatch[1]!,
+        nodes: nodeMatch?.[1] === "(null)" ? undefined : nodeMatch?.[1],
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async getNodeInfo(nodeName: string): Promise<NodeState | null> {
     try {
       const output = await this.ssh.exec(

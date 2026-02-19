@@ -845,32 +845,34 @@ export async function monitorAllocation(
       }
     }
 
-    // Check for jobs that vanished from squeue (could be completed or failed).
-    // Fast jobs may go PENDING → RUNNING → COMPLETED between polls.
-    // sacct has an accounting lag — retry a few times with short delays.
+    // Check for jobs that vanished from squeue (completed or failed between polls).
+    // Use scontrol (instant, no accounting lag) with sacct fallback.
     const vanished = Array.from(submissionMap.values()).filter(
       (s) =>
         (s.state === "PENDING" || s.state === "RUNNING") &&
         !jobs.some((j) => j.id === s.jobId),
     );
-    if (vanished.length > 0) {
-      const unresolved = new Set(vanished.map((s) => s.jobId));
-      // Retry sacct up to 5 times with 2s gaps to handle accounting lag
-      for (let attempt = 0; attempt < 5 && unresolved.size > 0; attempt++) {
-        if (attempt > 0) await sleep(2000);
+    for (const sub of vanished) {
+      // scontrol queries the Slurm controller directly — no lag
+      const info = await slurm.getJobState(sub.jobId);
+      if (info) {
+        if (info.state === "COMPLETED") {
+          sub.state = "COMPLETED";
+          if (info.nodes) sub.nodes = [info.nodes];
+          if (!winner) winner = sub;
+        } else if (info.state !== "PENDING" && info.state !== "RUNNING") {
+          sub.state = "FAILED";
+        }
+      } else {
+        // Job purged from controller — fall back to sacct
         const history = await slurm.getJobHistory("now-1hour");
-        for (const sub of vanished) {
-          if (!unresolved.has(sub.jobId)) continue;
-          const record = history.find((h) => h.id === sub.jobId);
-          if (record?.state === "COMPLETED") {
-            sub.state = "COMPLETED";
-            if (record.nodes) sub.nodes = [record.nodes];
-            if (!winner) winner = sub;
-            unresolved.delete(sub.jobId);
-          } else if (record) {
-            sub.state = "FAILED";
-            unresolved.delete(sub.jobId);
-          }
+        const record = history.find((h) => h.id === sub.jobId);
+        if (record?.state === "COMPLETED") {
+          sub.state = "COMPLETED";
+          if (record.nodes) sub.nodes = [record.nodes];
+          if (!winner) winner = sub;
+        } else if (record) {
+          sub.state = "FAILED";
         }
       }
     }
