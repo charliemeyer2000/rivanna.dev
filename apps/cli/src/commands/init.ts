@@ -3,10 +3,11 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import ora from "ora";
 import { confirm, input, select } from "@inquirer/prompts";
-import type { RvConfig } from "@rivanna/shared";
+import type { RvConfig, StorageQuota } from "@rivanna/shared";
 import { PATHS } from "@rivanna/shared";
 import { SSHClient } from "@/core/ssh.ts";
 import { saveConfig, loadConfig } from "@/core/config.ts";
+import { parseHdquota } from "@/parsers/hdquota.ts";
 import { theme } from "@/lib/theme.ts";
 import {
   SSH_DIR,
@@ -265,36 +266,104 @@ function parseAccountsFromAllocations(
 
 // ═══════════════ Group Storage Detection ═══════════════
 
+/** Format bytes as human-readable string (e.g., "18.5 TB", "200.0 GB") */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(1)} TB`;
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${bytes} B`;
+}
+
 /**
  * Detect shared group directories the user has access to.
- * Parses `hdquota` output for /standard/ and /project/ mounts.
+ * Uses parseHdquota for /standard/ and /project/ mounts.
+ * Returns both group dirs and full quota data for capacity checks.
  */
 async function detectGroupStorage(
   ssh: SSHClient,
-): Promise<{ path: string; type: string }[]> {
+): Promise<{ dirs: { path: string; type: string }[]; quotas: StorageQuota[] }> {
   try {
     const output = await ssh.exec("hdquota 2>/dev/null || true");
-    const dirs: { path: string; type: string }[] = [];
+    const quotas = parseHdquota(output);
+    const dirs = quotas
+      .filter((q) => /^\/(?:standard|project)\//.test(q.mountPoint))
+      .map((q) => ({ path: q.mountPoint, type: q.type }));
+    return { dirs, quotas };
+  } catch {
+    return { dirs: [], quotas: [] };
+  }
+}
 
-    for (const line of output.split("\n")) {
-      const trimmed = line.trim();
-      if (
-        !trimmed ||
-        trimmed.startsWith("Storage") ||
-        trimmed.startsWith("---")
-      )
-        continue;
+/**
+ * Migrate existing scratch HF cache data to shared storage.
+ * Non-fatal: if anything fails, the init flow continues.
+ */
+async function migrateScratchCache(
+  ssh: SSHClient,
+  scratchHf: string,
+  sharedHfPath: string,
+  quota: StorageQuota | undefined,
+): Promise<void> {
+  try {
+    // If scratch path is already a symlink, nothing to migrate
+    const linkCheck = await ssh.exec(
+      `[ -L "${scratchHf}" ] && echo "symlink" || echo "not"`,
+    );
+    if (linkCheck.trim() === "symlink") return;
 
-      // Match lines with /standard/ or /project/ paths
-      const match = trimmed.match(/^(.+?)\s+(\/(?:standard|project)\/\S+)/);
-      if (match) {
-        dirs.push({ path: match[2]!, type: match[1]!.trim() });
+    // Check if scratch HF cache has content
+    const duOutput = await ssh.exec(
+      `du -sb "${scratchHf}" 2>/dev/null | cut -f1 || echo 0`,
+    );
+    const cacheBytes = parseInt(duOutput.trim(), 10) || 0;
+    if (cacheBytes < 1024) return;
+
+    console.log(
+      theme.muted(
+        `\n  Found ${formatBytes(cacheBytes)} of models in ${scratchHf}`,
+      ),
+    );
+
+    // Check if there's enough space on shared storage
+    if (quota) {
+      const freeBytes = quota.totalBytes - quota.usedBytes;
+      if (cacheBytes > freeBytes) {
+        console.log(
+          theme.warning(
+            `  Not enough space: cache is ${formatBytes(cacheBytes)} but shared storage only has ${formatBytes(freeBytes)} free.`,
+          ),
+        );
+        console.log(
+          theme.muted(
+            "  Skipping migration. Your scratch cache will remain — new downloads go to shared.",
+          ),
+        );
+        return;
       }
     }
 
-    return dirs;
+    const doMigrate = await confirm({
+      message: `Migrate ${formatBytes(cacheBytes)} of models to shared storage? (frees scratch space)`,
+      default: true,
+    });
+    if (!doMigrate) return;
+
+    const migrateSpinner = ora(
+      `Migrating models (${formatBytes(cacheBytes)})...`,
+    ).start();
+    try {
+      await ssh.exec(
+        `rsync -a --ignore-existing "${scratchHf}/" "${sharedHfPath}/" && rm -rf "${scratchHf}"`,
+        { timeoutMs: 300_000 },
+      );
+      migrateSpinner.succeed("Models migrated to shared storage");
+    } catch {
+      migrateSpinner.warn(
+        "Migration incomplete (non-fatal). Models remain in scratch.",
+      );
+    }
   } catch {
-    return [];
+    // du/stat failures shouldn't block init
   }
 }
 
@@ -314,15 +383,30 @@ async function ensureRemoteSetup(
   const dirs = [
     PATHS.cache.uv(user),
     PATHS.cache.pip(user),
-    PATHS.cache.hf(user),
     PATHS.rvDir(user),
     PATHS.logs(user),
     PATHS.envFiles(user),
     PATHS.envs(user),
     PATHS.workspaces(user),
   ];
+  // Only create scratch HF dir if NOT using shared storage
+  if (!sharedHfCache) dirs.push(PATHS.cache.hf(user));
   if (sharedHfCache) dirs.push(sharedHfCache);
   await ssh.exec(`mkdir -p ${dirs.join(" ")}`);
+
+  // When using shared storage, make scratch HF path a symlink to shared
+  // so any tool hardcoding /scratch/user/.cache/huggingface still works
+  if (sharedHfCache) {
+    const scratchHf = PATHS.cache.hf(user);
+    await ssh.exec(
+      `if [ -d "${scratchHf}" ] && [ ! -L "${scratchHf}" ]; then ` +
+        `rm -rf "${scratchHf}" && ln -s "${sharedHfCache}" "${scratchHf}"; ` +
+        `elif [ ! -e "${scratchHf}" ]; then ` +
+        `ln -s "${sharedHfCache}" "${scratchHf}"; ` +
+        `elif [ -L "${scratchHf}" ]; then ` +
+        `rm "${scratchHf}" && ln -s "${sharedHfCache}" "${scratchHf}"; fi`,
+    );
+  }
 
   // Symlink ~/.cache/huggingface → the active HF cache so all tools share one location
   const hfTarget = sharedHfCache ?? PATHS.cache.hf(user);
@@ -632,7 +716,7 @@ async function runInit(options: { force?: boolean }) {
   // ── Step 8: Shared group storage detection ──
   const existingShared = existingConfig?.shared?.hf_cache;
   if (!existingShared) {
-    const groupDirs = await detectGroupStorage(rvSsh);
+    const { dirs: groupDirs, quotas } = await detectGroupStorage(rvSsh);
     if (groupDirs.length > 0) {
       console.log(
         theme.muted(
@@ -659,21 +743,48 @@ async function runInit(options: { force?: boolean }) {
           });
         }
 
-        const sharedHfPath = `${groupDir}/.cache/huggingface`;
-        config.shared = { hf_cache: sharedHfPath };
+        // Quota check: warn if shared filesystem is >80% full
+        const quota = quotas.find((q) => q.mountPoint === groupDir);
+        let proceedWithShared = true;
 
-        // Create the shared cache dir (group-writable)
-        const mkdirSpinner = ora("Setting up shared model cache...").start();
-        try {
-          await rvSsh.exec(
-            `mkdir -p "${sharedHfPath}" && chmod g+rwxs "${sharedHfPath}" 2>/dev/null || true`,
+        if (quota && quota.usedPercent > 80) {
+          const freeBytes = quota.totalBytes - quota.usedBytes;
+          console.log(
+            theme.warning(
+              `\n  Warning: ${groupDir} is ${quota.usedPercent}% full ` +
+                `(${formatBytes(quota.usedBytes)} / ${formatBytes(quota.totalBytes)}, ` +
+                `${formatBytes(freeBytes)} free)`,
+            ),
           );
-          mkdirSpinner.succeed(`Shared HF cache: ${sharedHfPath}`);
-        } catch {
-          mkdirSpinner.warn(
-            "Could not create shared cache dir (check group permissions)",
-          );
-          config.shared = undefined;
+          proceedWithShared = await confirm({
+            message: "Shared storage is almost full. Proceed anyway?",
+            default: false,
+          });
+        }
+
+        if (proceedWithShared) {
+          const sharedHfPath = `${groupDir}/.cache/huggingface`;
+          config.shared = { hf_cache: sharedHfPath };
+
+          // Create the shared cache dir (group-writable)
+          const mkdirSpinner = ora("Setting up shared model cache...").start();
+          try {
+            await rvSsh.exec(
+              `mkdir -p "${sharedHfPath}" && chmod g+rwxs "${sharedHfPath}" 2>/dev/null || true`,
+            );
+            mkdirSpinner.succeed(`Shared HF cache: ${sharedHfPath}`);
+          } catch {
+            mkdirSpinner.warn(
+              "Could not create shared cache dir (check group permissions)",
+            );
+            config.shared = undefined;
+          }
+
+          // Migrate existing scratch HF cache → shared
+          if (config.shared) {
+            const scratchHf = PATHS.cache.hf(user);
+            await migrateScratchCache(rvSsh, scratchHf, sharedHfPath, quota);
+          }
         }
       }
     }

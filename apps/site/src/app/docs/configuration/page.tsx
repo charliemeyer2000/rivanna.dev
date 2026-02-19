@@ -247,7 +247,16 @@ enabled = false`}</code>
           <code className="text-orange-accent">rv init</code> automatically
           detects group directories via{" "}
           <code className="text-orange-accent">hdquota</code> and offers to set
-          this up. you can also configure it manually:
+          this up. if you already have models in{" "}
+          <code className="text-orange-accent">
+            /scratch/user/.cache/huggingface
+          </code>
+          , rv will offer to migrate them to the shared location. rv also checks
+          the shared filesystem&apos;s capacity — if it&apos;s over 80% full,
+          you&apos;ll see a warning before proceeding.
+        </p>
+        <p className="text-sm text-gray-600">
+          you can also configure it manually:
         </p>
         <CodeBlock>
           <code className="text-sm text-black whitespace-pre">{`[shared]
@@ -256,7 +265,13 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
         <p className="text-xs text-gray-500">
           the shared directory is created with group-writable setgid permissions
           (chmod g+rwxs) so all lab members can read and write models. group
-          storage is persistent — not subject to the 90-day scratch purge.
+          storage is persistent — not subject to the 90-day scratch purge. when
+          active, both{" "}
+          <code className="text-orange-accent">~/.cache/huggingface</code> and{" "}
+          <code className="text-orange-accent">
+            /scratch/user/.cache/huggingface
+          </code>{" "}
+          are symlinked to the shared location.
         </p>
       </section>
 

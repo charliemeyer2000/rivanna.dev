@@ -105,14 +105,16 @@ enabled = false
 
 if you're part of a lab group with access to persistent group storage (`/standard/` or `/project/`), rv can use it as a shared HuggingFace model cache. this avoids every lab member downloading the same large models to their own scratch.
 
-`rv init` automatically detects group directories via `hdquota` and offers to set this up. you can also configure it manually:
+`rv init` automatically detects group directories via `hdquota` and offers to set this up. if you already have models in `/scratch/user/.cache/huggingface`, rv will offer to migrate them to the shared location. rv also checks the shared filesystem's capacity — if it's over 80% full, you'll see a warning before proceeding.
+
+you can also configure it manually:
 
 ```toml
 [shared]
 hf_cache = "/standard/mygroup/.cache/huggingface"
 ```
 
-the shared directory is created with group-writable setgid permissions (chmod g+rwxs) so all lab members can read and write models. group storage is persistent — not subject to the 90-day scratch purge.
+the shared directory is created with group-writable setgid permissions (chmod g+rwxs) so all lab members can read and write models. group storage is persistent — not subject to the 90-day scratch purge. when active, both `~/.cache/huggingface` and `/scratch/user/.cache/huggingface` are symlinked to the shared location.
 
 ## paths
 
