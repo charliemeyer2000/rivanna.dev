@@ -12,6 +12,8 @@ import { registerForwardCommand } from "./src/commands/forward.ts";
 import { registerEnvCommand } from "./src/commands/env.ts";
 import { registerCostCommand } from "./src/commands/cost.ts";
 import { registerExecCommand } from "./src/commands/exec.ts";
+import { registerUpgradeCommand } from "./src/commands/upgrade.ts";
+import { checkForUpdate } from "./src/lib/version-check.ts";
 
 const pkg = require("./package.json");
 
@@ -36,6 +38,9 @@ async function main() {
   registerEnvCommand(program);
   registerCostCommand(program);
   registerExecCommand(program);
+  registerUpgradeCommand(program);
+
+  await checkForUpdate().catch(() => {});
 
   program.parse(process.argv);
 }

@@ -212,6 +212,14 @@ rv exec ls /scratch/user
 rv exec which python
 ```
 
+## rv upgrade
+
+Check for a newer version and upgrade the rv CLI in place. Downloads the latest binary via the install script.
+
+```bash
+rv upgrade
+```
+
 ## rv init
 
 Interactive setup wizard. Configures your computing ID, SSH keys, VPN check, Slurm account, and remote environment. Run once after installing.

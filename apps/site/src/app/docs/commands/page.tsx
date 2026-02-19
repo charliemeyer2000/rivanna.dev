@@ -436,6 +436,13 @@ export default function CommandsPage() {
       </CommandSection>
 
       <CommandSection
+        id="rv-upgrade"
+        name="rv upgrade"
+        description="Check for a newer version and upgrade the rv CLI in place. Downloads the latest binary via the install script. The CLI also checks for updates automatically once per day."
+        usage="rv upgrade"
+      />
+
+      <CommandSection
         id="rv-init"
         name="rv init"
         description="Interactive setup wizard. Configures your computing ID, SSH keys, VPN check, Slurm account, and remote environment. Run once after installing."

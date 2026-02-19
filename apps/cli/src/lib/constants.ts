@@ -44,9 +44,16 @@ export const SACCT_FORMAT =
 // Default module loads for Slurm scripts
 export const DEFAULT_MODULES = ["cuda/12.8.0", "miniforge/24.11.3-py3.12"];
 
+// Site URL
+export const SITE_URL = "https://www.rivanna.dev";
+
 // Notification webhook URL
-export const NOTIFY_URL = "https://www.rivanna.dev/api/notify";
+export const NOTIFY_URL = `${SITE_URL}/api/notify`;
 export const NOTIFY_SECRET = "rv-hmac-9f3a7c2e1b";
+
+// Version check
+export const VERSION_CHECK_FILE = join(RV_DIR, "version-check.json");
+export const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // Local state files
 export const ENV_FILE = join(RV_DIR, "env.json");

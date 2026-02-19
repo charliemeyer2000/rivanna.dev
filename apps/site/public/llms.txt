@@ -7,6 +7,6 @@ rv is a CLI tool for running GPU jobs on UVA's Rivanna HPC cluster. no SLURM scr
 ## docs
 
 - [getting started](https://rivanna.dev/docs/getting-started.md): install rv, set up SSH, run your first job
-- [commands](https://rivanna.dev/docs/commands.md): full reference for all 13 rv commands
+- [commands](https://rivanna.dev/docs/commands.md): full reference for all 14 rv commands
 - [smart allocator](https://rivanna.dev/docs/allocator.md): how fan-out strategy and backfill detection work
 - [configuration](https://rivanna.dev/docs/configuration.md): config file reference (~/.rv/config.toml)

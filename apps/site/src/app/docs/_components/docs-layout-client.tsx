@@ -33,6 +33,7 @@ const docNavItems = [
       { label: "rv env", id: "rv-env" },
       { label: "rv cost", id: "rv-cost" },
       { label: "rv exec", id: "rv-exec" },
+      { label: "rv upgrade", id: "rv-upgrade" },
       { label: "rv init", id: "rv-init" },
     ],
   },
