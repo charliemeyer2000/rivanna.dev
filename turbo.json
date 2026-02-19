@@ -3,7 +3,8 @@
   "ui": "tui",
   "tasks": {
     "build": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["RESEND_API_KEY", "NOTIFY_HMAC_SECRET", "GITHUB_TOKEN"]
     },
     "check-types": {
       "dependsOn": ["^check-types"]
