@@ -24,7 +24,7 @@ export function generateMultiNodeScript(opts: TemplateOptions): string {
   lines.push(
     `export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)`,
   );
-  lines.push(`export MASTER_PORT=29500`);
+  lines.push(`export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`);
   lines.push(`export WORLD_SIZE=$SLURM_NTASKS`);
   lines.push(`export NODE_RANK=$SLURM_PROCID`);
   lines.push("");

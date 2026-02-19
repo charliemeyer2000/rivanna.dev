@@ -241,6 +241,15 @@ export default function CommandsPage() {
           </CodeBlock>
           <CodeBlock>
             <code className="text-sm text-black">
+              rv ssh 12345 --node 1
+              <span className="text-gray-400">
+                {" "}
+                # attach to second node (multi-node jobs)
+              </span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
               rv ssh --config
               <span className="text-gray-400">
                 {" "}
@@ -352,6 +361,11 @@ export default function CommandsPage() {
           {
             flag: "-s, --stop [port]",
             description: "stop a forward (or all if no port given)",
+          },
+          {
+            flag: "--node <index>",
+            description:
+              "node index for multi-node jobs (default: 0, the head node)",
           },
         ]}
       >

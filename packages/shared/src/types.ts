@@ -159,8 +159,6 @@ export interface TemplateOptions extends SbatchOptions {
   walltimeSeconds?: number;
   bufferSeconds?: number;
   ncclDebug?: boolean;
-  rayPort?: number;
-  dashboardPort?: number;
   venvPath?: string;
   sharedHfCache?: string;
 }

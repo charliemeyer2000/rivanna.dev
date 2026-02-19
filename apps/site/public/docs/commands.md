@@ -79,6 +79,7 @@ Attach to a running job's compute node. Defaults to the most recent running job 
 ```bash
 rv ssh                   # attach to most recent running job
 rv ssh 12345             # attach to specific job
+rv ssh 12345 --node 1    # attach to second node (multi-node jobs)
 rv ssh --config          # print SSH config for VS Code / Cursor
 ```
 
@@ -158,6 +159,7 @@ rv forward 8888
 | `--auto`            | auto-detect common ports (Ray, Jupyter, TensorBoard) |
 | `-l, --list`        | list active forwards                                 |
 | `-s, --stop [port]` | stop a forward (or all if no port given)             |
+| `--node <index>`    | node index for multi-node jobs (default: 0)          |
 
 ```bash
 rv forward --auto     # detect + forward all

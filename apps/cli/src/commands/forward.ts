@@ -13,6 +13,7 @@ interface ForwardOptions {
   auto?: boolean;
   list?: boolean;
   stop?: string | boolean;
+  node?: string;
   json?: boolean;
 }
 
@@ -25,6 +26,7 @@ export function registerForwardCommand(program: Command) {
     .option("--auto", "auto-detect common ports (Ray, Jupyter, TensorBoard)")
     .option("-l, --list", "list active forwards")
     .option("-s, --stop [port]", "stop a forward (or all if no port)")
+    .option("--node <index>", "node index for multi-node jobs (default: 0)")
     .option("--json", "output as JSON")
     .action(
       async (
@@ -138,7 +140,23 @@ async function runForward(
       `Job ${targetJobId} not found or not yet allocated to a node.`,
     );
   }
-  const node = job.nodes[0]!;
+  const nodeIdx = options.node ? parseInt(options.node, 10) : 0;
+  if (nodeIdx < 0 || nodeIdx >= job.nodes.length) {
+    throw new Error(
+      `Node index ${nodeIdx} out of range. Job has ${job.nodes.length} node(s): ${job.nodes.join(", ")}`,
+    );
+  }
+  const node = job.nodes[nodeIdx]!;
+  if (job.nodes.length > 1 && !options.node && !options.json) {
+    console.log(
+      theme.muted(
+        `  Job spans ${job.nodes.length} nodes: ${job.nodes.join(", ")}`,
+      ),
+    );
+    console.log(
+      theme.muted(`  Forwarding from ${node} (use --node N for others)`),
+    );
+  }
 
   // Auto-detect mode
   if (options.auto) {

@@ -5,6 +5,7 @@ import { theme } from "@/lib/theme.ts";
 
 interface SshOptions {
   config?: boolean;
+  node?: string;
 }
 
 export function registerSshCommand(program: Command) {
@@ -13,6 +14,7 @@ export function registerSshCommand(program: Command) {
     .description("Attach to a running job's compute node")
     .argument("[jobId]", "job to connect to (default: most recent running)")
     .option("--config", "print SSH config entry for VS Code / Cursor")
+    .option("--node <index>", "node index for multi-node jobs (default: 0)")
     .action(async (jobId: string | undefined, options: SshOptions) => {
       try {
         await runSsh(jobId, options);
@@ -72,7 +74,23 @@ async function runSsh(jobId: string | undefined, options: SshOptions) {
       `Job ${targetJobId} not found or not yet allocated to a node.`,
     );
   }
-  const node = job.nodes[0]!;
+  const nodeIdx = options.node ? parseInt(options.node, 10) : 0;
+  if (nodeIdx < 0 || nodeIdx >= job.nodes.length) {
+    throw new Error(
+      `Node index ${nodeIdx} out of range. Job has ${job.nodes.length} node(s): ${job.nodes.join(", ")}`,
+    );
+  }
+  const node = job.nodes[nodeIdx]!;
+  if (job.nodes.length > 1 && !options.node) {
+    console.log(
+      theme.muted(
+        `  Job spans ${job.nodes.length} nodes: ${job.nodes.join(", ")}`,
+      ),
+    );
+    console.log(
+      theme.muted(`  Connecting to ${node} (use --node N for others)`),
+    );
+  }
 
   if (options.config) {
     // Print SSH config entry for VS Code / Cursor
