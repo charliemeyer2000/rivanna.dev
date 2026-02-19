@@ -28,6 +28,11 @@ export const RvConfigSchema = z.object({
     email: z.string().default(""),
     token: z.string().optional(),
   }),
+  scratch_keepalive: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({ enabled: true }),
 });
 
 export function loadConfig(): RvConfig | null {

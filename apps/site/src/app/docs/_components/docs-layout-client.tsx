@@ -57,6 +57,7 @@ const docNavItems = [
       { label: "notifications", id: "notifications" },
       { label: "ai naming", id: "ai-naming" },
       { label: "environment variables", id: "environment-variables" },
+      { label: "scratch keepalive", id: "scratch-keepalive" },
       { label: "paths", id: "paths" },
     ],
   },

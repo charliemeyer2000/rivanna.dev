@@ -1,7 +1,12 @@
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import type { RvConfig } from "@rivanna/shared";
 import { SSHClient } from "@/core/ssh.ts";
 import { SlurmClient } from "@/core/slurm.ts";
 import { ensureInitialized } from "@/core/config.ts";
+import { KEEPALIVE_FILE } from "@/lib/constants.ts";
+
+/** How often to touch scratch files (24 hours). */
+const KEEPALIVE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function ensureSetup(): {
   config: RvConfig;
@@ -15,7 +20,48 @@ export function ensureSetup(): {
     config.connection.user,
     config.defaults.account,
   );
+
+  if (config.scratch_keepalive?.enabled !== false) {
+    maybeKeepalive(ssh, config);
+  }
+
   return { config, ssh, slurm };
+}
+
+/**
+ * Touch all files under ~/.rv and cache dirs on scratch to prevent
+ * the 90-day purge policy from deleting them. Runs at most once per day,
+ * non-blocking (fire-and-forget).
+ */
+function maybeKeepalive(ssh: SSHClient, config: RvConfig): void {
+  try {
+    if (existsSync(KEEPALIVE_FILE)) {
+      const last = parseInt(readFileSync(KEEPALIVE_FILE, "utf-8").trim(), 10);
+      if (Date.now() - last < KEEPALIVE_INTERVAL_MS) return;
+    }
+  } catch {
+    // corrupt file or read error — proceed with keepalive
+  }
+
+  // Write timestamp immediately so concurrent commands don't duplicate
+  writeFileSync(KEEPALIVE_FILE, String(Date.now()));
+
+  const scratch = config.paths.scratch;
+  const dirs = [
+    `${scratch}/.rv`,
+    `${scratch}/.cache/uv`,
+    `${scratch}/.cache/pip`,
+    `${scratch}/.cache/huggingface`,
+  ];
+
+  // Fire-and-forget: touch all files in critical directories
+  const cmd = dirs
+    .map((d) => `find ${d} -exec touch -a {} + 2>/dev/null`)
+    .join("; ");
+
+  ssh.exec(cmd, { timeoutMs: 120_000 }).catch(() => {
+    // Keepalive is best-effort — don't fail the user's command
+  });
 }
 
 /**

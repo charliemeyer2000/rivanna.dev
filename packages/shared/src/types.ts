@@ -284,4 +284,7 @@ export interface RvConfig {
     email: string;
     token?: string;
   };
+  scratch_keepalive?: {
+    enabled: boolean;
+  };
 }

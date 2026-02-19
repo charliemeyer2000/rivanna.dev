@@ -51,6 +51,7 @@ export const NOTIFY_SECRET = "rv-hmac-9f3a7c2e1b";
 // Local state files
 export const ENV_FILE = join(RV_DIR, "env.json");
 export const FORWARDS_FILE = join(RV_DIR, "forwards.json");
+export const KEEPALIVE_FILE = join(RV_DIR, "last_keepalive");
 
 // Default sync exclusion patterns
 export const DEFAULT_SYNC_EXCLUDES = [
