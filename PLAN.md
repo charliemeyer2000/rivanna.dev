@@ -86,7 +86,7 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
    - [Phase 3: CLI Foundation — SSH, Config, Init](#phase-3-cli-foundation--ssh-config-init) ✅
    - [Phase 4: Slurm Parsers & Templates](#phase-4-slurm-parsers--templates) ✅
    - [Phase 5: The Allocator Brain](#phase-5-the-allocator-brain) ✅
-   - [Phase 6: Core Commands — up, run, ps, stop, attach](#phase-6-core-commands--up-run-ps-stop-attach) ✅
+   - [Phase 6: Core Commands — up, run, ps, stop](#phase-6-core-commands--up-run-ps-stop) ✅
    - [Phase 7: Supporting Commands](#phase-7-supporting-commands--ssh-logs-status-sync-forward-env-cost) ✅
    - [Phase 7.5: Smart Execution, GPU Verification, Init Hardening](#phase-75-smart-execution-gpu-verification-init-hardening) ✅
    - [Phase 8: Notifications — Resend Email](#phase-8-notifications--resend-email) ✅
@@ -99,7 +99,7 @@ When using Claude Code plan mode: each **Implementation Phase** below is sized f
 
 ## 1. Project Overview
 
-`rv` is a CLI tool that makes UVA's Rivanna/Afton HPC cluster feel effortless. The user says what they want (GPUs, time, a script to run) and the CLI handles everything: analyzing the queue, submitting optimal requests across GPU types and topologies, monitoring allocation, syncing code, attaching to jobs, forwarding ports, and sending email notifications.
+`rv` is a CLI tool that makes UVA's Rivanna/Afton HPC cluster feel effortless. The user says what they want (GPUs, time, a script to run) and the CLI handles everything: analyzing the queue, submitting optimal requests across GPU types and topologies, monitoring allocation, syncing code, connecting to jobs, forwarding ports, and sending email notifications.
 
 The CLI runs on the user's local machine (macOS/Linux) and communicates with Rivanna over SSH. No dependencies needed on Rivanna itself.
 
@@ -188,7 +188,7 @@ Discovered empirically by running experiments on the cluster:
 5. **MIG is free**: 0 SUs, instant allocation, always available.
 6. **35+ concurrent submissions no problem**: Limit is 10,000. No penalty for mass submissions.
 7. **Compute nodes have full internet**: github, pypi, huggingface all reachable.
-8. **`srun --overlap --pty bash` works** for attaching to running jobs without SSH keys on compute nodes.
+8. **`srun --overlap --pty bash` works** for connecting to running jobs without SSH keys on compute nodes (used by `rv ssh`).
 9. **`sbatch --test-only`** returns estimated start time without submitting. Can be used for binary search on backfill window.
 
 ### Software on Rivanna
@@ -310,7 +310,7 @@ rivanna.dev/
 │   │   │   │   ├── run.ts
 │   │   │   │   ├── ps.ts
 │   │   │   │   ├── stop.ts
-│   │   │   │   ├── attach.ts
+│   │   │   │   ├── ssh-cmd.ts
 │   │   │   │   ├── ssh.ts
 │   │   │   │   ├── logs.ts
 │   │   │   │   ├── status.ts
@@ -844,19 +844,17 @@ function generateStrategies(
 
 ---
 
-### Phase 6: Core Commands — up, run, ps, stop, attach ✅
+### Phase 6: Core Commands — up, run, ps, stop ✅
 
-**Goal:** The five most important commands working end-to-end.
+**Goal:** The core commands working end-to-end. `rv up` is interactive-only; `rv run` is batch-only.
 
-**`rv up [options]` — THE core command:**
+**`rv up [options]` — interactive GPU allocation:**
 
 ```
 rv up                                  # interactive GPU shell (1 GPU, allocator picks type)
 rv up --gpu 4                          # 4 GPUs, allocator picks fastest type
 rv up --gpu 4 --type a100              # 4 A100s specifically
 rv up --gpu 8 --time 24h              # 8 GPUs for 24 hours (auto checkpoint-restart)
-rv up --gpu 4 --type a100 --run train.py  # batch mode: run script, exit when done
-rv up --cpus 32 --mem 256G             # CPU-only job
 rv up --mig                            # free MIG slice (instant, for setup tasks)
 ```
 
@@ -866,13 +864,9 @@ Options:
 --gpu <N>              Number of GPUs (default: 1)
 --type <type>          GPU type: a100, a6000, a40, h200, v100, rtx3090, mig (default: "any")
 --time <duration>      Total time needed: 2h, 24h, 3d (allocator handles segmenting)
---run <script>         Batch mode: run this script/command, job exits when done
---cpus <N>             CPU-only mode: number of cores
 --mem <amount>         Memory: 64G, 256G, 1T
---nodes <N>            Request specific node count (otherwise allocator decides)
 --mig                  Shortcut for --gpu 1 --type mig (free, instant)
 --name <name>          Job name
---no-sync              Don't sync local directory
 --dry-run              Show what would be submitted, don't submit
 --json                 Output result as JSON
 ```
@@ -882,19 +876,18 @@ Behavior:
 1. Run the allocator -> queries queue, computes backfill windows, generates strategy set
 2. Show brief status: "Submitting 4 strategies across A6000, A40, A100..."
 3. Submit all strategies simultaneously via `sbatch`
-4. Monitor with live Ink UI showing each strategy's status, queue position, ETA
+4. Monitor showing each strategy's status, queue position, ETA
 5. When first strategy starts RUNNING: cancel all others, announce winner
-6. If `--run` was specified: job runs the script, CLI streams stdout, exits when done
-7. If no `--run`: attach to the job interactively via `srun --overlap --pty bash`
+6. Attach to the job interactively via `srun --overlap --pty bash`
 
 If `--time` exceeds backfill window: the allocator segments into backfill-eligible chunks using checkpoint-restart template.
 
-**`rv run <command> [options]`:**
+**`rv run <command> [options]` — batch execution:**
 
-Thin wrapper around `rv up --run <command>`. Implies short-lived task, defaults to shorter walltime, always exits when done.
+Allocates GPUs, syncs local files, runs the command, streams output until completion.
 
 ```
-rv run "pip install torch"
+rv run python train.py
 rv run "huggingface-cli download meta-llama/Llama-3.1-8B" --time 2h
 rv run "python preprocess.py" --gpu 1 --type mig
 ```
@@ -923,26 +916,19 @@ rv stop 9531337          # cancel specific job
 rv stop --all            # cancel all your jobs
 ```
 
-**`rv attach [job_id]`:**
-
-```
-rv attach                # attach to most recent running job
-rv attach 9531337        # attach to specific job
-```
-
-Uses `srun --jobid=<JOB> --overlap --pty /bin/bash`.
-
 ---
 
 ### Phase 7: Supporting Commands — ssh, logs, status, sync, forward, env, cost ✅
 
-**Goal:** All remaining CLI commands.
+**Goal:** All remaining CLI commands. `rv attach` was merged into `rv ssh`.
 
 **`rv ssh [job_id]`:**
 
+Attach to a running job's compute node. Uses `srun --jobid=<JOB> --overlap --pty /bin/bash`.
+
 ```
-rv ssh                   # SSH to most recent job's node
-rv ssh 9531337           # SSH to specific job's node
+rv ssh                   # attach to most recent running job
+rv ssh 9531337           # attach to specific job
 rv ssh --config          # print SSH config entry for VS Code / Cursor
 ```
 
@@ -1279,9 +1265,9 @@ Ran 8 live tests on Rivanna (MIG, A6000, 4x A6000, V100) covering GPU sanity, vL
 
 ---
 
-**Code Deployment & Execution Model (for `rv up --run` and `rv sync`):**
+**Code Deployment & Execution Model (for `rv run` and `rv sync`):**
 
-When `rv up --run train.py` is used from a local project directory:
+When `rv run train.py` is used from a local project directory:
 
 1. `rsync` current directory to `/scratch/<user>/rv-workspaces/<dirname>/`
    - Respects `.gitignore` and `.rvignore`

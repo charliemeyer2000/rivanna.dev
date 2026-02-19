@@ -4,7 +4,7 @@ full reference for all rv commands. every command supports `--json` for scripted
 
 ## rv up
 
-Allocate GPUs on Rivanna. Probes the cluster, generates strategies across all compatible GPU types and partitions, submits them in parallel, and returns when the first allocation starts running.
+Allocate GPUs on Rivanna and attach an interactive shell. Probes the cluster, generates strategies across all compatible GPU types and partitions, submits them in parallel, and drops you into a shell when the first allocation starts running. Use `rv run` for batch jobs.
 
 ```bash
 rv up -g 2 -t a100 --time 8h
@@ -15,7 +15,6 @@ rv up -g 2 -t a100 --time 8h
 | `-g, --gpu <n>`     | number of GPUs                                        | 1              |
 | `-t, --type <type>` | GPU type (a100, a6000, a40, h200, v100, rtx3090, mig) | —              |
 | `--time <duration>` | total time needed (e.g. 2h, 24h, 3d)                  | 2:59:00        |
-| `--run <command>`   | batch mode: run command then exit                     | —              |
 | `--name <name>`     | job name                                              | auto-generated |
 | `--mem <size>`      | total CPU memory (e.g. 200G)                          | auto           |
 | `--mig`             | shortcut for --gpu 1 --type mig (free, instant)       | —              |
@@ -23,7 +22,6 @@ rv up -g 2 -t a100 --time 8h
 
 ```bash
 rv up --mig              # free MIG slice, instant
-rv up --run train.py     # allocate + run in batch mode
 rv up --dry-run          # preview strategies
 ```
 
@@ -74,21 +72,14 @@ rv stop --all    # cancel everything
 | ----------- | -------------------------------------------- |
 | `-a, --all` | cancel all your jobs (requires confirmation) |
 
-## rv attach
-
-Attach to a running job with an interactive shell. Defaults to the most recent running job if no ID is given.
-
-```bash
-rv attach
-rv attach 12345    # attach to specific job
-```
-
 ## rv ssh
 
-Open an SSH session to the Rivanna login node. Useful for quick one-off commands or debugging.
+Attach to a running job's compute node. Defaults to the most recent running job if no ID is given. Use `--config` to print an SSH config entry for VS Code or Cursor.
 
 ```bash
-rv ssh
+rv ssh                   # attach to most recent running job
+rv ssh 12345             # attach to specific job
+rv ssh --config          # print SSH config for VS Code / Cursor
 ```
 
 ## rv logs

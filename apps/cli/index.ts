@@ -4,7 +4,6 @@ import { registerUpCommand } from "./src/commands/up.ts";
 import { registerRunCommand } from "./src/commands/run.ts";
 import { registerPsCommand } from "./src/commands/ps.ts";
 import { registerStopCommand } from "./src/commands/stop.ts";
-import { registerAttachCommand } from "./src/commands/attach.ts";
 import { registerSshCommand } from "./src/commands/ssh-cmd.ts";
 import { registerLogsCommand } from "./src/commands/logs.ts";
 import { registerStatusCommand } from "./src/commands/status.ts";
@@ -29,7 +28,6 @@ async function main() {
   registerRunCommand(program);
   registerPsCommand(program);
   registerStopCommand(program);
-  registerAttachCommand(program);
   registerSshCommand(program);
   registerLogsCommand(program);
   registerStatusCommand(program);

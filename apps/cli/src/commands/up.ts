@@ -12,15 +12,12 @@ import { ensureSetup, parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
-import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
-import { tailJobLogs } from "@/core/log-tailer.ts";
-import { prepareExecution } from "@/core/project.ts";
+import { generateJobName } from "@/core/job-naming.ts";
 
 interface UpOptions {
   gpu: string;
   type?: string;
   time: string;
-  run?: string;
   name?: string;
   mem?: string;
   mig?: boolean;
@@ -38,7 +35,6 @@ export function registerUpCommand(program: Command) {
       "GPU type: a100, a6000, a40, h200, v100, rtx3090, mig",
     )
     .option("--time <duration>", "total time needed: 2h, 24h, 3d", "2:59:00")
-    .option("--run <command>", "batch mode: run command/file then exit")
     .option("--name <name>", "job name")
     .option(
       "--mem <size>",
@@ -67,7 +63,6 @@ export function registerUpCommand(program: Command) {
 
 async function runUp(options: UpOptions) {
   const { config, slurm } = ensureSetup();
-  const ssh = slurm.sshClient;
   const isJson = !!options.json;
 
   // Parse options
@@ -88,42 +83,7 @@ async function runUp(options: UpOptions) {
 
   const time = parseTime(options.time);
 
-  // Smart execution: detect local file in --run, sync, deps
-  let command = options.run;
-  let workDir: string | undefined;
-  let venvPath: string | undefined;
-
-  if (options.run) {
-    const parts = options.run.split(/\s+/);
-    const prepSpinner = isJson ? null : ora("Preparing...").start();
-    const execution = await prepareExecution(
-      parts,
-      config.connection.user,
-      ssh,
-      prepSpinner ?? undefined,
-    );
-    prepSpinner?.stop();
-
-    if (execution) {
-      command = execution.command;
-      workDir = execution.workDir;
-      venvPath = execution.venvPath ?? undefined;
-    }
-  }
-
-  // Smart job naming
-  let jobName = options.name;
-  if (!jobName) {
-    jobName = generateJobName(command);
-    if (config.defaults.ai_naming && config.defaults.ai_api_key && command) {
-      const apiKey = config.defaults.ai_api_key;
-      const provider = apiKey.startsWith("sk-ant-")
-        ? ("anthropic" as const)
-        : ("openai" as const);
-      const aiName = await generateAIJobName(command, apiKey, provider);
-      if (aiName) jobName = `rv-${aiName}`;
-    }
-  }
+  const jobName = options.name ?? generateJobName(undefined);
 
   const request: UserRequest = {
     gpuCount,
@@ -133,9 +93,6 @@ async function runUp(options: UpOptions) {
     jobName,
     account: config.defaults.account,
     user: config.connection.user,
-    command,
-    workDir,
-    venvPath,
     mem: options.mem,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
     sharedHfCache: config.shared?.hf_cache,
@@ -245,38 +202,18 @@ async function runUp(options: UpOptions) {
     console.log(theme.warning(`  ⚠ ${w}`));
   }
 
-  // --- Attach or stream logs ---
-  if (options.run) {
-    const logPath = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}.out`;
-    await tailJobLogs(slurm, winner.jobId, logPath);
+  // --- Attach interactive shell ---
+  console.log(theme.muted(`  Job ID: ${winner.jobId}`));
+  console.log(theme.muted(`  Strategy: ${winner.strategy.label}`));
+  console.log();
 
-    // Post-job summary with actionable commands
-    const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
-    console.log(theme.muted("\n  Files on Rivanna:"));
-    if (workDir) {
-      console.log(theme.muted(`    Workspace:    ${workDir}`));
-    }
-    console.log(theme.muted(`    Logs:         ${logPath}`));
-    console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
-    console.log();
-    if (workDir) {
-      console.log(theme.muted(`  rv sync pull ${workDir} .`));
-    }
-    console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
-  } else {
-    // Interactive: attach shell
-    console.log(theme.muted(`  Job ID: ${winner.jobId}`));
-    console.log(theme.muted(`  Strategy: ${winner.strategy.label}`));
-    console.log();
-
-    const exitCode = await slurm.sshClient.execInteractive([
-      "ssh",
-      "-t",
-      config.connection.host,
-      `srun --jobid=${winner.jobId} --overlap --pty /bin/bash`,
-    ]);
-    process.exit(exitCode);
-  }
+  const exitCode = await slurm.sshClient.execInteractive([
+    "ssh",
+    "-t",
+    config.connection.host,
+    `srun --jobid=${winner.jobId} --overlap --pty /bin/bash`,
+  ]);
+  process.exit(exitCode);
 }
 
 function printStrategies(

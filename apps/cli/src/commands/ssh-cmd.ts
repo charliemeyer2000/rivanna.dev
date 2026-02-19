@@ -10,7 +10,7 @@ interface SshOptions {
 export function registerSshCommand(program: Command) {
   program
     .command("ssh")
-    .description("SSH to a running job's compute node")
+    .description("Attach to a running job's compute node")
     .argument("[jobId]", "job to connect to (default: most recent running)")
     .option("--config", "print SSH config entry for VS Code / Cursor")
     .action(async (jobId: string | undefined, options: SshOptions) => {

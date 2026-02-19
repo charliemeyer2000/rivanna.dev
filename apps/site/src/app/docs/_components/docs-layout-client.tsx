@@ -25,7 +25,6 @@ const docNavItems = [
       { label: "rv run", id: "rv-run" },
       { label: "rv ps", id: "rv-ps" },
       { label: "rv stop", id: "rv-stop" },
-      { label: "rv attach", id: "rv-attach" },
       { label: "rv ssh", id: "rv-ssh" },
       { label: "rv logs", id: "rv-logs" },
       { label: "rv status", id: "rv-status" },

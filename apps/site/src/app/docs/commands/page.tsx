@@ -88,7 +88,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-up"
         name="rv up"
-        description="Allocate GPUs on Rivanna. Probes the cluster, generates strategies across all compatible GPU types and partitions, submits them in parallel, and returns when the first allocation starts running."
+        description="Allocate GPUs on Rivanna and attach an interactive shell. Probes the cluster, generates strategies across all compatible GPU types and partitions, submits them in parallel, and drops you into a shell when the first allocation starts running. Use rv run for batch jobs."
         usage="rv up -g 2 -t a100 --time 8h"
         options={[
           {
@@ -105,10 +105,6 @@ export default function CommandsPage() {
             flag: "--time <duration>",
             description: "total time needed (e.g. 2h, 24h, 3d)",
             default: "2:59:00",
-          },
-          {
-            flag: "--run <command>",
-            description: "batch mode: run command then exit",
           },
           {
             flag: "--name <name>",
@@ -136,15 +132,6 @@ export default function CommandsPage() {
             <code className="text-sm text-black">
               rv up --mig
               <span className="text-gray-400"> # free MIG slice, instant</span>
-            </code>
-          </CodeBlock>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              rv up --run train.py
-              <span className="text-gray-400">
-                {" "}
-                # allocate + run in batch mode
-              </span>
             </code>
           </CodeBlock>
           <CodeBlock>
@@ -240,27 +227,29 @@ export default function CommandsPage() {
       </CommandSection>
 
       <CommandSection
-        id="rv-attach"
-        name="rv attach"
-        description="Attach to a running job with an interactive shell. Defaults to the most recent running job if no ID is given."
-        usage="rv attach"
+        id="rv-ssh"
+        name="rv ssh"
+        description="Attach to a running job's compute node. Defaults to the most recent running job if no ID is given. Use --config to print an SSH config entry for VS Code or Cursor."
+        usage="rv ssh"
       >
         <div className="space-y-2 mt-3">
           <CodeBlock>
             <code className="text-sm text-black">
-              rv attach 12345
+              rv ssh 12345
               <span className="text-gray-400"> # attach to specific job</span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv ssh --config
+              <span className="text-gray-400">
+                {" "}
+                # print SSH config for VS Code
+              </span>
             </code>
           </CodeBlock>
         </div>
       </CommandSection>
-
-      <CommandSection
-        id="rv-ssh"
-        name="rv ssh"
-        description="Open an SSH session to the Rivanna login node. Useful for quick one-off commands or debugging."
-        usage="rv ssh"
-      />
 
       <CommandSection
         id="rv-logs"

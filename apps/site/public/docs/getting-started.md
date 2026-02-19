@@ -44,6 +44,6 @@ rv status
 
 ## what's next?
 
-- [commands](./commands.md) — full reference for all 14 rv commands
+- [commands](./commands.md) — full reference for all 13 rv commands
 - [smart allocator](./allocator.md) — how fan-out strategy and backfill detection work
 - [configuration](./configuration.md) — config file, environment variables, notifications
