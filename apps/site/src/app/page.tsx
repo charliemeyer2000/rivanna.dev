@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CodeBlock } from "./docs/_components/code-block";
 
 export default function Home() {
   return (
@@ -14,30 +15,38 @@ export default function Home() {
         </div>
 
         <h2 className="text-xl font-semibold mt-8 mb-4 text-black">install</h2>
-        <pre className="mb-4 border border-gray-200 bg-gray-50 p-4 text-sm overflow-x-auto">
-          curl -fsSL https://rivanna.dev/install.sh | bash
-        </pre>
+        <CodeBlock className="mb-4">
+          <code className="text-sm text-black">
+            curl -fsSL https://rivanna.dev/install.sh | bash
+          </code>
+        </CodeBlock>
 
         <h2 className="text-xl font-semibold mt-8 mb-4 text-black">
           quickstart
         </h2>
         <div className="space-y-2">
-          <pre className="border border-gray-200 bg-gray-50 p-4 text-sm overflow-x-auto">
-            rv init
-            <span className="text-gray-400">
-              {"            "}# one-time setup
-            </span>
-          </pre>
-          <pre className="border border-gray-200 bg-gray-50 p-4 text-sm overflow-x-auto">
-            rv up --mig
-            <span className="text-gray-400">
-              {"        "}# free GPU, instant
-            </span>
-          </pre>
-          <pre className="border border-gray-200 bg-gray-50 p-4 text-sm overflow-x-auto">
-            rv run python train.py
-            <span className="text-gray-400"> # submit a job</span>
-          </pre>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv init
+              <span className="text-gray-400">
+                {"            "}# one-time setup
+              </span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv up --mig
+              <span className="text-gray-400">
+                {"        "}# free GPU, instant
+              </span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv run python train.py
+              <span className="text-gray-400"> # submit a job</span>
+            </code>
+          </CodeBlock>
         </div>
 
         <p className="mt-8 text-base">
