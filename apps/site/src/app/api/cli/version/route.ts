@@ -12,7 +12,7 @@ export async function GET() {
           Authorization: `Bearer ${GITHUB_TOKEN}`,
           Accept: "application/vnd.github.v3+json",
         },
-        next: { revalidate: 300 }, // cache for 5 minutes
+        cache: "no-store",
       },
     );
 
