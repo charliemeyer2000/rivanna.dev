@@ -7,6 +7,7 @@ export function registerExecCommand(program: Command) {
   program
     .command("exec")
     .description("Run a command on the Rivanna login node (no GPU)")
+    .passThroughOptions()
     .argument("<command...>", "command to run remotely")
     .option("--json", "output as JSON")
     .action(async (commandParts: string[], options: { json?: boolean }) => {
@@ -29,7 +30,10 @@ export function registerExecCommand(program: Command) {
 
 async function runExec(commandParts: string[], options: { json?: boolean }) {
   const { slurm } = ensureSetup();
-  const command = shellJoin(commandParts);
+  // Single arg = user provided a shell string; pass through as-is.
+  // Multiple args = individual tokens; shellJoin for POSIX safety.
+  const command =
+    commandParts.length === 1 ? commandParts[0]! : shellJoin(commandParts);
 
   const output = await slurm.sshClient.exec(command);
 

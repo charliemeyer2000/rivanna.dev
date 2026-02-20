@@ -15,6 +15,12 @@ import { parseSinfo } from "@/parsers/sinfo.ts";
 import { parseAllocations } from "@/parsers/allocations.ts";
 import { parseHdquota } from "@/parsers/hdquota.ts";
 import { cleanStaleForwards } from "@/core/forward-store.ts";
+import {
+  loadRequests,
+  buildJobIndex,
+  type RequestRecord,
+  type StrategyRecord,
+} from "@/core/request-store.ts";
 import { VPNError, SSHConnectionError, SSHTimeoutError } from "@/lib/errors.ts";
 
 interface StatusOptions {
@@ -97,6 +103,93 @@ function summarizeGPUAvailability(
   }
 
   return summaries.sort((a, b) => a.suPerGPUHour - b.suPerGPUHour);
+}
+
+/** Format a start time as relative "starts in Xh Ym" */
+function formatStartEta(startTime: string | undefined): string {
+  if (!startTime) return "";
+  const start = new Date(startTime);
+  const now = new Date();
+  const diffMs = start.getTime() - now.getTime();
+  if (diffMs <= 0 || isNaN(diffMs)) return "";
+
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 2) return "starting soon";
+  if (diffMin < 60) return `starts in ${diffMin}m`;
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  if (hours < 24) {
+    return mins > 0 ? `starts in ${hours}h ${mins}m` : `starts in ${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0
+    ? `starts in ${days}d ${remHours}h`
+    : `starts in ${days}d`;
+}
+
+/** Format a GPU topology label from a strategy record */
+function formatTopology(strat: StrategyRecord): string {
+  const gpu = strat.gpuType.replace(/_\d+$/, "").toUpperCase();
+  if (strat.nodes > 1) {
+    return `${gpu}:${strat.gpusPerNode}×${strat.nodes}`;
+  }
+  return `${gpu}:${strat.gpusPerNode * strat.nodes}`;
+}
+
+/** Render a grouped request: parent line + strategy sub-lines (compact for status). */
+function renderStatusRequestGroup(
+  request: RequestRecord,
+  jobs: import("@rivanna/shared").Job[],
+): void {
+  const stratIndex = new Map<string, StrategyRecord>();
+  for (const s of request.strategies) {
+    stratIndex.set(s.jobId, s);
+  }
+
+  const activeJob = jobs.find(
+    (j) =>
+      j.state === "RUNNING" ||
+      j.state === "CONFIGURING" ||
+      j.state === "COMPLETING",
+  );
+  const aggregateState = activeJob ? activeJob.state : jobs[0]!.state;
+  const representative = activeJob ?? jobs[0]!;
+
+  const stateColor =
+    aggregateState === "RUNNING" ||
+    aggregateState === "CONFIGURING" ||
+    aggregateState === "COMPLETING"
+      ? chalk.green
+      : aggregateState === "PENDING"
+        ? chalk.yellow
+        : chalk.red;
+
+  // Compact parent line for status dashboard
+  const name = request.jobName.slice(0, 20).padEnd(21);
+  const stateStr = stateColor(aggregateState.padEnd(10));
+  const timeStr = `${representative.timeElapsed}/${representative.timeLimit}`;
+
+  console.log(`  ${name}${stateStr}${timeStr}`);
+
+  // Sub-lines: strategy details
+  for (const job of jobs) {
+    const strat = stratIndex.get(job.id);
+    const topo = strat
+      ? formatTopology(strat)
+      : job.gres.replace(/^gres\/gpu:/, "");
+    const node =
+      job.nodes.length > 0
+        ? job.nodes.join(",")
+        : job.reason
+          ? `(${job.reason})`
+          : "";
+    const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
+    const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
+    console.log(
+      theme.muted(`    ${job.id}  ${topo.padEnd(12)}${node}`) + etaStr,
+    );
+  }
 }
 
 async function runStatus(options: StatusOptions) {
@@ -228,10 +321,40 @@ async function runStatus(options: StatusOptions) {
     }
   }
 
-  // Active jobs
+  // Active jobs — grouped by request (same format as `rv ps`)
   if (jobs.length > 0) {
     console.log(theme.info("\nActive Jobs"));
+
+    const requests = loadRequests();
+    const jobIndex = buildJobIndex(requests);
+
+    // Bucket jobs by request ID
+    const grouped = new Map<
+      string,
+      { request: RequestRecord; jobs: import("@rivanna/shared").Job[] }
+    >();
+    const orphans: import("@rivanna/shared").Job[] = [];
+
     for (const job of jobs) {
+      const req = jobIndex.get(job.id);
+      if (req) {
+        let bucket = grouped.get(req.id);
+        if (!bucket) {
+          bucket = { request: req, jobs: [] };
+          grouped.set(req.id, bucket);
+        }
+        bucket.jobs.push(job);
+      } else {
+        orphans.push(job);
+      }
+    }
+
+    for (const [, { request, jobs: reqJobs }] of grouped) {
+      renderStatusRequestGroup(request, reqJobs);
+    }
+
+    // Orphan jobs in flat format
+    for (const job of orphans) {
       const stateColor =
         job.state === "RUNNING"
           ? chalk.green
@@ -244,9 +367,11 @@ async function runStatus(options: StatusOptions) {
           ? job.nodes.join(",")
           : job.reason
             ? `(${job.reason})`
-            : "(pending)";
+            : "";
+      const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
+      const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
       console.log(
-        `  ${job.id.padEnd(12)}${job.name.padEnd(20).slice(0, 19).padEnd(20)}${gpus.padEnd(14)}${node.padEnd(16)}${stateColor(job.state.padEnd(10))}${job.timeElapsed}/${job.timeLimit}`,
+        `  ${job.id.padEnd(12)}${job.name.padEnd(20).slice(0, 19).padEnd(20)}${gpus.padEnd(14)}${node.padEnd(16)}${stateColor(job.state.padEnd(10))}${job.timeElapsed}/${job.timeLimit}${etaStr}`,
       );
     }
   } else {

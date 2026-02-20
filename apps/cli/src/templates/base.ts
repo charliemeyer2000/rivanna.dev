@@ -31,6 +31,9 @@ export function generatePreamble(opts: TemplateOptions): string {
   if (opts.features && opts.features.length > 0) {
     lines.push(`#SBATCH --constraint=${opts.features.join("&")}`);
   }
+  if (opts.excludeNodes) {
+    lines.push(`#SBATCH --exclude=${opts.excludeNodes}`);
+  }
 
   lines.push("");
 

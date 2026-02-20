@@ -23,6 +23,7 @@ export interface ExecutionResult {
   command: string;
   workDir: string;
   venvPath: string | null;
+  localFilePath: string | null;
 }
 
 // --------------- Constants ---------------
@@ -279,5 +280,6 @@ export async function prepareExecution(
     command,
     workDir: project.remotePath,
     venvPath,
+    localFilePath: localFile,
   };
 }

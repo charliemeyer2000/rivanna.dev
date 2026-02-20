@@ -23,6 +23,7 @@ async function main() {
   program
     .version(pkg.version)
     .name("rv")
+    .enablePositionalOptions()
     .description("effortless GPU computing on UVA's Rivanna cluster");
 
   registerInitCommand(program);

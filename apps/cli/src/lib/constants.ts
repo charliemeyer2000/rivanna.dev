@@ -37,7 +37,7 @@ export const BASHRC_MARKER_END = "# --- end rv cache config ---";
 
 // Slurm command format strings
 export const SINFO_FORMAT = "%N %T %G %C %m";
-export const SQUEUE_FORMAT = "%i|%j|%T|%M|%l|%P|%b|%N|%R";
+export const SQUEUE_FORMAT = "%i|%j|%T|%M|%l|%P|%b|%N|%R|%S";
 export const SACCT_FORMAT =
   "JobID,JobName,State,Elapsed,ExitCode,Partition,NodeList";
 
@@ -59,6 +59,7 @@ export const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const ENV_FILE = join(RV_DIR, "env.json");
 export const FORWARDS_FILE = join(RV_DIR, "forwards.json");
 export const KEEPALIVE_FILE = join(RV_DIR, "last_keepalive");
+export const REQUESTS_FILE = join(RV_DIR, "requests.json");
 
 // Default sync exclusion patterns
 export const DEFAULT_SYNC_EXCLUDES = [

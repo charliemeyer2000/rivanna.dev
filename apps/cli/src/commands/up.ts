@@ -13,6 +13,7 @@ import { theme } from "@/lib/theme.ts";
 import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName } from "@/core/job-naming.ts";
+import { saveRequest } from "@/core/request-store.ts";
 
 interface UpOptions {
   gpu: string;
@@ -151,6 +152,21 @@ async function runUp(options: UpOptions) {
   if (submissions.length === 0) {
     throw new Error("All strategy submissions failed.");
   }
+
+  saveRequest({
+    id: crypto.randomUUID(),
+    jobName: request.jobName,
+    command: null,
+    type: "up",
+    strategies: submissions.map((s) => ({
+      jobId: s.jobId,
+      gpuType: s.strategy.gpuType,
+      gpusPerNode: s.strategy.gpusPerNode,
+      nodes: s.strategy.nodes,
+      topology: s.strategy.topology,
+    })),
+    createdAt: new Date().toISOString(),
+  });
 
   // --- Monitor ---
   const monitorSpinner = isJson

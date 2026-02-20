@@ -93,6 +93,8 @@ export interface Job {
   timeLimitSeconds: number;
   nodes: string[];
   reason: string;
+  /** Estimated start time for PENDING jobs (ISO 8601), actual start for RUNNING */
+  startTime?: string;
 }
 
 export interface StorageQuota {
@@ -145,6 +147,7 @@ export interface SbatchOptions {
   error?: string;
   features?: string[];
   exclusive?: boolean;
+  excludeNodes?: string;
 }
 
 export interface TemplateOptions extends SbatchOptions {
@@ -200,6 +203,8 @@ export interface UserRequest {
   notifyUrl?: string;
   notifyToken?: string;
   sharedHfCache?: string;
+  /** Nodes to exclude from scheduling (set by hardware-retry) */
+  excludeNodes?: string;
 }
 
 export interface BackfillProbe {

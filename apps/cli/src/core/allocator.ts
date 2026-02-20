@@ -689,6 +689,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     notifyUrl: request.notifyUrl,
     notifyToken: request.notifyToken,
     sharedHfCache: request.sharedHfCache,
+    excludeNodes: request.excludeNodes,
   };
 
   if (strategy.checkpointRestart) {

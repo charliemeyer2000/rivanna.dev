@@ -146,7 +146,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-run"
         name="rv run"
-        description="Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to the remote workspace."
+        description="Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to the remote workspace. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks and auto-retries on hardware errors."
         usage="rv run python train.py"
         options={[
           {
@@ -185,7 +185,7 @@ export default function CommandsPage() {
           </CodeBlock>
           <CodeBlock>
             <code className="text-sm text-black">
-              rv run torchrun --nproc_per_node=4 train.py
+              rv run -g 4 -t a100 torchrun --nproc_per_node=2 train.py
             </code>
           </CodeBlock>
         </div>
@@ -194,7 +194,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-ps"
         name="rv ps"
-        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time."
+        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row."
         usage="rv ps"
         options={[
           {
@@ -436,7 +436,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-exec"
         name="rv exec"
-        description="Run a command on the Rivanna login node (no GPU allocation). Useful for checking SU balance, listing files, or quick remote operations."
+        description="Run a command on the Rivanna login node (no GPU allocation). Useful for checking SU balance, listing files, or quick remote operations. Accepts both individual arguments and quoted shell strings."
         usage="rv exec allocations"
       >
         <div className="space-y-2 mt-3">
@@ -444,7 +444,9 @@ export default function CommandsPage() {
             <code className="text-sm text-black">rv exec ls /scratch/user</code>
           </CodeBlock>
           <CodeBlock>
-            <code className="text-sm text-black">rv exec which python</code>
+            <code className="text-sm text-black">
+              rv exec &quot;pip list | grep torch&quot;
+            </code>
           </CodeBlock>
         </div>
       </CommandSection>

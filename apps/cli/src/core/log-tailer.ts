@@ -4,11 +4,17 @@ import { theme } from "@/lib/theme.ts";
 
 export type LogStream = "out" | "err" | "both";
 
+export interface JobResult {
+  finalState: string;
+  exitCode: number;
+}
+
 /**
  * Tail a job's log files, printing new lines as they appear.
  * Polls every 3 seconds until the job finishes.
  *
  * When streaming both, stderr lines are printed in red.
+ * Returns the final job state and exit code.
  */
 export async function tailJobLogs(
   slurm: SlurmClient,
@@ -16,7 +22,7 @@ export async function tailJobLogs(
   outPath: string,
   errPath: string,
   options?: { silent?: boolean; stream?: LogStream },
-): Promise<void> {
+): Promise<JobResult> {
   const stream = options?.stream ?? "both";
   const trackOut = stream === "out" || stream === "both";
   const trackErr = stream === "err" || stream === "both";
@@ -105,25 +111,32 @@ export async function tailJobLogs(
       // Final flush: catch any lines written between the last wc -l and now
       await fetchNewLines(lastOutLines, lastErrLines);
 
-      if (!options?.silent) {
-        // squeue may no longer have the job — ask scontrol for the real state
-        let finalState = job?.state;
-        if (
-          !finalState ||
-          finalState === "COMPLETING" ||
-          finalState === "UNKNOWN"
-        ) {
-          const info = await slurm.getJobState(jobId);
-          if (info) {
-            if (info.state === "COMPLETING") {
-              finalState = info.exitCode ? "FAILED" : "COMPLETED";
-            } else {
-              finalState = (info.state as typeof finalState) ?? "COMPLETED";
-            }
+      // squeue may no longer have the job — ask scontrol for the real state
+      let finalState = job?.state;
+      let exitCode: number | undefined;
+      if (
+        !finalState ||
+        finalState === "COMPLETING" ||
+        finalState === "UNKNOWN"
+      ) {
+        const info = await slurm.getJobState(jobId);
+        if (info) {
+          exitCode = info.exitCode;
+          if (info.state === "COMPLETING") {
+            finalState = info.exitCode ? "FAILED" : "COMPLETED";
           } else {
-            finalState = "COMPLETED";
+            finalState = (info.state as typeof finalState) ?? "COMPLETED";
           }
+        } else {
+          finalState = "COMPLETED";
         }
+      } else if (finalState !== "COMPLETED") {
+        // Job in squeue with terminal state — still fetch exit code
+        const info = await slurm.getJobState(jobId);
+        if (info) exitCode = info.exitCode;
+      }
+
+      if (!options?.silent) {
         const stateColor =
           finalState === "COMPLETED" ? theme.success : theme.error;
         console.log(
@@ -132,7 +145,12 @@ export async function tailJobLogs(
             theme.muted(")."),
         );
       }
-      break;
+
+      // Derive exit code: use scontrol value, or infer from state
+      const resolvedExitCode =
+        exitCode !== undefined ? exitCode : finalState === "COMPLETED" ? 0 : 1;
+
+      return { finalState: finalState!, exitCode: resolvedExitCode };
     }
 
     await new Promise((resolve) => setTimeout(resolve, 3000));

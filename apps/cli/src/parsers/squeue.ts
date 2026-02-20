@@ -95,8 +95,8 @@ function parseJobState(raw: string): JobState {
 
 /**
  * Parse squeue output.
- * Expected format: `squeue -o "%i|%j|%T|%M|%l|%P|%b|%N|%R" --noheader`
- * Fields: JOBID|NAME|STATE|TIME|TIME_LIMIT|PARTITION|TRES_PER_NODE|NODELIST|REASON
+ * Expected format: `squeue -o "%i|%j|%T|%M|%l|%P|%b|%N|%R|%S" --noheader`
+ * Fields: JOBID|NAME|STATE|TIME|TIME_LIMIT|PARTITION|TRES_PER_NODE|NODELIST|REASON|START_TIME
  *
  * Pipe-delimited to prevent empty fields (e.g. NODELIST for PENDING jobs)
  * from collapsing when split on whitespace.
@@ -114,6 +114,13 @@ export function parseSqueue(output: string): Job[] {
     const [id, name, stateRaw, elapsed, limit, partition, gres, nodeList] =
       parts.map((p) => p.trim());
     const reason = (parts[8] ?? "").trim();
+    const startTimeRaw = (parts[9] ?? "").trim();
+
+    // Parse start time — squeue %S returns "YYYY-MM-DDTHH:MM:SS" or "N/A"
+    const startTime =
+      startTimeRaw && startTimeRaw !== "N/A" && startTimeRaw !== "Unknown"
+        ? startTimeRaw
+        : undefined;
 
     jobs.push({
       id: id!,
@@ -128,6 +135,7 @@ export function parseSqueue(output: string): Job[] {
       timeLimitSeconds: parseTimeToSeconds(limit!),
       nodes: expandNodeList(nodeList!),
       reason: reason.replace(/^\(|\)$/g, ""),
+      startTime,
     });
   }
 

@@ -15,7 +15,10 @@ import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
 import { prepareExecution } from "@/core/project.ts";
+import { lintForMultiNode } from "@/core/preflight.ts";
+import { analyzeForHardwareRetry } from "@/core/hardware-retry.ts";
 import { shellJoin } from "@/lib/shell-quote.ts";
+import { saveRequest } from "@/core/request-store.ts";
 
 interface RunOptions {
   gpu: string;
@@ -31,6 +34,7 @@ export function registerRunCommand(program: Command) {
   program
     .command("run")
     .description("Run a command on Rivanna GPUs")
+    .passThroughOptions()
     .argument("<command...>", "file path or command to run")
     .option("-g, --gpu <n>", "number of GPUs", "1")
     .option("-t, --type <type>", "GPU type")
@@ -89,7 +93,19 @@ async function runRun(commandParts: string[], options: RunOptions) {
   );
   prepSpinner?.stop();
 
-  const command = execution ? execution.command : shellJoin(commandParts);
+  // Preflight lint for multi-node submissions
+  if (gpuCount >= 4 && execution?.localFilePath && !isJson) {
+    const warnings = lintForMultiNode(execution.localFilePath);
+    for (const w of warnings) {
+      console.log(theme.warning(`  ⚠ Preflight: ${w.message}`));
+    }
+  }
+
+  const command = execution
+    ? execution.command
+    : commandParts.length === 1
+      ? commandParts[0]!
+      : shellJoin(commandParts);
 
   // Smart job naming
   let jobName = options.name;
@@ -121,98 +137,154 @@ async function runRun(commandParts: string[], options: RunOptions) {
     sharedHfCache: config.shared?.hf_cache,
   };
 
-  const spinner = isJson ? null : ora("Probing cluster...").start();
-  const result = await allocate(slurm, request);
-  spinner?.stop();
+  // Allocate → submit → monitor → tail, with hardware failure retry
+  let retryCount = 0;
+  for (;;) {
+    const spinner = isJson ? null : ora("Probing cluster...").start();
+    const result = await allocate(slurm, request);
+    spinner?.stop();
 
-  if (result.strategies.length === 0) {
-    throw new Error("No viable strategies found.");
-  }
+    if (result.strategies.length === 0) {
+      throw new Error("No viable strategies found.");
+    }
 
-  const types = [...new Set(result.strategies.map((s) => s.gpuType))];
-  if (!isJson) {
-    console.log(
-      theme.info(
-        `Submitting ${result.strategies.length} strategies across ${types.map((t) => t.toUpperCase()).join(", ")}...`,
-      ),
-    );
-  }
-
-  const envVars = getAllEnvVars();
-  const submissions = await submitStrategies(
-    slurm,
-    result.strategies,
-    request,
-    envVars,
-  );
-
-  if (submissions.length === 0) {
-    throw new Error("All strategy submissions failed.");
-  }
-
-  const monitorSpinner = isJson
-    ? null
-    : ora("Waiting for allocation...").start();
-  const startMs = Date.now();
-
-  const outcome = await monitorAllocation(slurm, submissions, {
-    onUpdate: (subs: StrategySubmission[]) => {
-      if (!monitorSpinner) return;
-      const pending = subs.filter(
-        (s) => s.state === "PENDING" || s.state === "CONFIGURING",
-      ).length;
-      const elapsed = Math.round((Date.now() - startMs) / 1000);
-      monitorSpinner.text = `Waiting... ${pending} pending (${elapsed}s)`;
-    },
-  });
-
-  monitorSpinner?.stop();
-
-  // Verify actual GPU hardware on the allocated node
-  await verifyAllocation(slurm, outcome);
-
-  const winner = outcome.winner;
-  const node = winner.nodes[0] ?? "unknown";
-  const gpuLabel = outcome.actualGPU
-    ? `${outcome.actualGPU.count}x ${outcome.actualGPU.type}`
-    : `${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()}`;
-
-  if (isJson) {
-    console.log(JSON.stringify(outcome, null, 2));
-  } else {
-    console.log(theme.success(`✓ Running on ${node} (${gpuLabel})`));
-    if (outcome.actualGPU?.mismatch) {
+    const types = [...new Set(result.strategies.map((s) => s.gpuType))];
+    if (!isJson) {
       console.log(
-        theme.warning(
-          `  ⚠ GPU mismatch: requested ${winner.strategy.gpuType.toUpperCase()} but got ${outcome.actualGPU.type}`,
+        theme.info(
+          `Submitting ${result.strategies.length} strategies across ${types.map((t) => t.toUpperCase()).join(", ")}...`,
         ),
       );
     }
-    const topoWarnings = getTopologyWarnings(winner.strategy);
-    for (const w of topoWarnings) {
-      console.log(theme.warning(`  ⚠ ${w}`));
-    }
-  }
 
-  // Tail logs until completion
-  const logBase = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}`;
-  const outPath = `${logBase}.out`;
-  const errPath = `${logBase}.err`;
-  await tailJobLogs(slurm, winner.jobId, outPath, errPath, { silent: isJson });
+    const envVars = getAllEnvVars();
+    const submissions = await submitStrategies(
+      slurm,
+      result.strategies,
+      request,
+      envVars,
+    );
 
-  // Post-job summary with actionable commands
-  if (!isJson) {
-    const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
-    console.log(theme.muted("\n  Files on Rivanna:"));
-    if (execution?.workDir) {
-      console.log(theme.muted(`    Workspace:    ${execution.workDir}`));
+    if (submissions.length === 0) {
+      throw new Error("All strategy submissions failed.");
     }
-    console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
-    console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
-    console.log();
-    if (execution?.workDir) {
-      console.log(theme.muted(`  rv sync pull ${execution.workDir} .`));
+
+    saveRequest({
+      id: crypto.randomUUID(),
+      jobName: request.jobName,
+      command: request.command ?? null,
+      type: "run",
+      strategies: submissions.map((s) => ({
+        jobId: s.jobId,
+        gpuType: s.strategy.gpuType,
+        gpusPerNode: s.strategy.gpusPerNode,
+        nodes: s.strategy.nodes,
+        topology: s.strategy.topology,
+      })),
+      createdAt: new Date().toISOString(),
+    });
+
+    const monitorSpinner = isJson
+      ? null
+      : ora("Waiting for allocation...").start();
+    const jobStartMs = Date.now();
+
+    const outcome = await monitorAllocation(slurm, submissions, {
+      onUpdate: (subs: StrategySubmission[]) => {
+        if (!monitorSpinner) return;
+        const pending = subs.filter(
+          (s) => s.state === "PENDING" || s.state === "CONFIGURING",
+        ).length;
+        const elapsed = Math.round((Date.now() - jobStartMs) / 1000);
+        monitorSpinner.text = `Waiting... ${pending} pending (${elapsed}s)`;
+      },
+    });
+
+    monitorSpinner?.stop();
+
+    // Verify actual GPU hardware on the allocated node
+    await verifyAllocation(slurm, outcome);
+
+    const winner = outcome.winner;
+    const node =
+      winner.nodes.length > 1
+        ? winner.nodes.join(",")
+        : (winner.nodes[0] ?? "unknown");
+    const gpuLabel = outcome.actualGPU
+      ? `${outcome.actualGPU.count}x ${outcome.actualGPU.type}`
+      : `${winner.strategy.gpusPerNode * winner.strategy.nodes}x ${winner.strategy.gpuType.toUpperCase()}`;
+
+    if (isJson) {
+      console.log(JSON.stringify(outcome, null, 2));
+    } else {
+      console.log(theme.success(`✓ Running on ${node} (${gpuLabel})`));
+      if (outcome.actualGPU?.mismatch) {
+        console.log(
+          theme.warning(
+            `  ⚠ GPU mismatch: requested ${winner.strategy.gpuType.toUpperCase()} but got ${outcome.actualGPU.type}`,
+          ),
+        );
+      }
+      const topoWarnings = getTopologyWarnings(winner.strategy);
+      for (const w of topoWarnings) {
+        console.log(theme.warning(`  ⚠ ${w}`));
+      }
     }
-    console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
+
+    // Tail logs until completion
+    const logBase = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}`;
+    const outPath = `${logBase}.out`;
+    const errPath = `${logBase}.err`;
+    const jobResult = await tailJobLogs(slurm, winner.jobId, outPath, errPath, {
+      silent: isJson,
+    });
+
+    // Check for hardware failure → auto-retry with node exclusion
+    if (jobResult.exitCode !== 0 && !isJson) {
+      const elapsedSeconds = Math.round((Date.now() - jobStartMs) / 1000);
+      const errContent = await ssh
+        .exec(`tail -n 100 ${errPath} 2>/dev/null || true`)
+        .catch(() => "");
+      const retry = analyzeForHardwareRetry(
+        errContent,
+        winner.nodes,
+        elapsedSeconds,
+        retryCount,
+        request.excludeNodes,
+      );
+      if (retry.shouldRetry) {
+        console.log(
+          theme.warning(
+            `\n  Hardware error on ${node} — retrying with node exclusion...`,
+          ),
+        );
+        request.excludeNodes = retry.excludeNodes;
+        retryCount++;
+        continue;
+      }
+    }
+
+    // Post-job summary with actionable commands
+    if (!isJson) {
+      const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
+      console.log(theme.muted("\n  Files on Rivanna:"));
+      if (execution?.workDir) {
+        console.log(theme.muted(`    Workspace:    ${execution.workDir}`));
+      }
+      console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
+      console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
+      console.log();
+      if (execution?.workDir) {
+        console.log(theme.muted(`  rv sync pull ${execution.workDir} .`));
+      }
+      console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
+    }
+
+    // Propagate remote job exit code
+    if (jobResult.exitCode !== 0) {
+      process.exit(jobResult.exitCode);
+    }
+
+    break;
   }
 }
