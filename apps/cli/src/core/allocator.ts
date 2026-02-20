@@ -771,7 +771,8 @@ export async function submitStrategies(
     }),
   );
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]!;
     if (result.status === "fulfilled") {
       submissions.push({
         strategy: result.value.strategy,
@@ -779,6 +780,16 @@ export async function submitStrategies(
         state: "PENDING" as JobState,
         nodes: [],
       });
+    } else {
+      const strat = strategies[i]!;
+      // Log failed submissions so users can diagnose partition/account issues
+      const reason =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      console.error(
+        `  Warning: ${strat.partition} submission failed: ${reason.split("\n")[0]}`,
+      );
     }
   }
 

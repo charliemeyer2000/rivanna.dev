@@ -126,7 +126,7 @@ export class SlurmClient {
   // --- Action methods ---
 
   async submitJob(script: string): Promise<string> {
-    const tmpPath = `${PATHS.rvDir(this.user)}/tmp-${Date.now()}.sh`;
+    const tmpPath = `${PATHS.rvDir(this.user)}/tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`;
     await this.ssh.writeFile(tmpPath, script);
     const output = await this.ssh.exec(
       `chmod +x ${tmpPath} && sbatch ${tmpPath} && rm -f ${tmpPath}`,
