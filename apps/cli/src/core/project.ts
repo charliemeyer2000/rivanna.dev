@@ -153,13 +153,18 @@ async function isVenvCurrent(
  * Create or update the remote venv using uv.
  * Installs deps with --only-binary :all: for fast, reliable installs.
  */
-async function ensureVenv(ssh: SSHClient, project: ProjectInfo): Promise<void> {
+async function ensureVenv(
+  ssh: SSHClient,
+  project: ProjectInfo,
+  user: string,
+): Promise<void> {
   if (!project.depsFile || !project.depsHash) return;
 
   const uvBin = "~/.local/bin/uv";
   const moduleLoad = `module load ${DEFAULT_MODULES.join(" ")}`;
   const depsRemotePath = `${project.remotePath}/${project.depsFile}`;
-  const uvEnv = "UV_LINK_MODE=copy";
+  const uvCacheDir = PATHS.cache.uv(user);
+  const uvEnv = `UV_LINK_MODE=copy UV_CACHE_DIR=${uvCacheDir}`;
 
   // Check uv availability
   const uvCheck = await ssh.exec(
@@ -251,7 +256,7 @@ export async function prepareExecution(
     if (!current) {
       if (spinner)
         spinner.text = `Installing dependencies (${project.depsFile})...`;
-      await ensureVenv(ssh, project);
+      await ensureVenv(ssh, project, user);
     }
     venvPath = project.venvPath;
   }

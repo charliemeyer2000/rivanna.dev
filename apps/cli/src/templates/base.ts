@@ -86,6 +86,11 @@ export function generatePreamble(opts: TemplateOptions): string {
   lines.push(`export TOKENIZERS_PARALLELISM=false`);
   lines.push("");
 
+  // Dynamic MASTER_PORT prevents collisions when multiple torchrun/DDP
+  // jobs land on the same node. Range: 29500-30499.
+  lines.push(`export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`);
+  lines.push("");
+
   // Cache directories — all on scratch to avoid filling home quota
   lines.push(`# Cache directories`);
   lines.push(`export UV_CACHE_DIR=${PATHS.cache.uv(opts.user)}`);

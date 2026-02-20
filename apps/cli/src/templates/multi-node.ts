@@ -19,12 +19,11 @@ export function generateMultiNodeScript(opts: TemplateOptions): string {
   }
   lines.push("");
 
-  // Master address/port setup
+  // Master address/port setup (MASTER_PORT already set in base preamble)
   lines.push(`# Set master address to first node`);
   lines.push(
     `export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)`,
   );
-  lines.push(`export MASTER_PORT=$((29500 + SLURM_JOB_ID % 1000))`);
   lines.push(`export WORLD_SIZE=$SLURM_NTASKS`);
   lines.push(`export NODE_RANK=$SLURM_PROCID`);
   lines.push("");
