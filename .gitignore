@@ -9,3 +9,6 @@ dist/
 *.pem
 coverage
 npm-debug.log*
+
+# CLI test scripts (smoke tests, tier tests, workloads)
+apps/cli/tests/
