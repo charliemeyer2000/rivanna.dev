@@ -59,7 +59,7 @@ async function runPs(options: PsOptions) {
     console.log(theme.info("\nActive jobs:"));
     console.log(
       theme.muted(
-        `  ${"ID".padEnd(12)}${"Name".padEnd(18)}${"GPUs".padEnd(12)}${"Node".padEnd(18)}${"Status".padEnd(12)}${"Elapsed".padEnd(10)}Limit`,
+        `  ${"ID".padEnd(12)}${"Name".padEnd(18)}${"GPUs".padEnd(16)}${"Node".padEnd(18)}${"Status".padEnd(12)}${"Elapsed".padEnd(10)}Limit`,
       ),
     );
 
@@ -70,9 +70,16 @@ async function runPs(options: PsOptions) {
           : job.state === "PENDING"
             ? chalk.yellow
             : chalk.red;
-      const node = job.nodes.length > 0 ? job.nodes.join(",") : "(pending)";
+      // Strip "gres/gpu:" prefix for cleaner display (e.g. "a100:2")
+      const gpus = job.gres.replace(/^gres\/gpu:/, "");
+      const node =
+        job.nodes.length > 0
+          ? job.nodes.join(",")
+          : job.reason
+            ? `(${job.reason})`
+            : "(pending)";
       console.log(
-        `  ${job.id.padEnd(12)}${job.name.padEnd(18).slice(0, 17).padEnd(18)}${job.gres.padEnd(12)}${node.padEnd(18)}${stateColor(job.state.padEnd(12))}${job.timeElapsed.padEnd(10)}${job.timeLimit}`,
+        `  ${job.id.padEnd(12)}${job.name.padEnd(18).slice(0, 17).padEnd(18)}${gpus.padEnd(16)}${node.padEnd(18)}${stateColor(job.state.padEnd(12))}${job.timeElapsed.padEnd(10)}${job.timeLimit}`,
       );
     }
   }

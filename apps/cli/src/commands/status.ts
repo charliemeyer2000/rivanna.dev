@@ -238,9 +238,15 @@ async function runStatus(options: StatusOptions) {
           : job.state === "PENDING"
             ? chalk.yellow
             : chalk.red;
-      const node = job.nodes.length > 0 ? job.nodes.join(",") : "(pending)";
+      const gpus = job.gres.replace(/^gres\/gpu:/, "");
+      const node =
+        job.nodes.length > 0
+          ? job.nodes.join(",")
+          : job.reason
+            ? `(${job.reason})`
+            : "(pending)";
       console.log(
-        `  ${job.id.padEnd(12)}${job.name.padEnd(20).slice(0, 19).padEnd(20)}${job.gres.padEnd(14)}${node.padEnd(16)}${stateColor(job.state.padEnd(10))}${job.timeElapsed}/${job.timeLimit}`,
+        `  ${job.id.padEnd(12)}${job.name.padEnd(20).slice(0, 19).padEnd(20)}${gpus.padEnd(14)}${node.padEnd(16)}${stateColor(job.state.padEnd(10))}${job.timeElapsed}/${job.timeLimit}`,
       );
     }
   } else {

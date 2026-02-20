@@ -95,10 +95,11 @@ function parseJobState(raw: string): JobState {
 
 /**
  * Parse squeue output.
- * Expected format: `squeue -o "%i %j %T %M %l %P %b %N %R" --noheader`
- * Fields: JOBID NAME STATE TIME TIME_LIMIT PARTITION TRES_PER_NODE NODELIST REASON
+ * Expected format: `squeue -o "%i|%j|%T|%M|%l|%P|%b|%N|%R" --noheader`
+ * Fields: JOBID|NAME|STATE|TIME|TIME_LIMIT|PARTITION|TRES_PER_NODE|NODELIST|REASON
  *
- * Note: REASON field can contain spaces, so we split on whitespace with a limit.
+ * Pipe-delimited to prevent empty fields (e.g. NODELIST for PENDING jobs)
+ * from collapsing when split on whitespace.
  */
 export function parseSqueue(output: string): Job[] {
   const jobs: Job[] = [];
@@ -107,21 +108,20 @@ export function parseSqueue(output: string): Job[] {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Split into at most 9 parts (REASON can contain spaces)
-    const parts = trimmed.split(/\s+/);
+    const parts = trimmed.split("|");
     if (parts.length < 8) continue;
 
     const [id, name, stateRaw, elapsed, limit, partition, gres, nodeList] =
-      parts;
-    const reason = parts.slice(8).join(" ") || "";
+      parts.map((p) => p.trim());
+    const reason = (parts[8] ?? "").trim();
 
     jobs.push({
       id: id!,
       name: name!,
-      user: "", // squeue format doesn't include user in our format
+      user: "",
       state: parseJobState(stateRaw!),
       partition: partition!,
-      gres: gres === "(null)" ? "" : gres!,
+      gres: gres === "(null)" || !gres ? "" : gres,
       timeElapsed: elapsed!,
       timeElapsedSeconds: parseTimeToSeconds(elapsed!),
       timeLimit: limit!,
