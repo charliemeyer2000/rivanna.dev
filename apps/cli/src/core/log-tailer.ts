@@ -10,10 +10,24 @@ export interface JobResult {
 }
 
 /**
+ * Derive per-node file paths from a base path.
+ * Example: "job-123.out" → ["job-123.node0.out", "job-123.node1.out"]
+ */
+function deriveNodePaths(basePath: string, nodeCount: number): string[] {
+  const dotIdx = basePath.lastIndexOf(".");
+  const base = basePath.slice(0, dotIdx);
+  const ext = basePath.slice(dotIdx);
+  return Array.from({ length: nodeCount }, (_, i) => `${base}.node${i}${ext}`);
+}
+
+/**
  * Tail a job's log files, printing new lines as they appear.
  * Polls every 3 seconds until the job finishes.
  *
- * When streaming both, stderr lines are printed in red.
+ * For multi-node jobs (nodeCount > 1), tails per-node files and prefixes
+ * output with [node0], [node1], etc. Falls back to sbatch-level files
+ * if per-node files are empty (preamble error).
+ *
  * Returns the final job state and exit code.
  */
 export async function tailJobLogs(
@@ -21,16 +35,50 @@ export async function tailJobLogs(
   jobId: string,
   outPath: string,
   errPath: string,
-  options?: { silent?: boolean; stream?: LogStream },
+  options?: {
+    silent?: boolean;
+    stream?: LogStream;
+    nodeCount?: number;
+    nodeFilter?: number;
+  },
 ): Promise<JobResult> {
   const stream = options?.stream ?? "both";
+  const nodeCount = options?.nodeCount ?? 1;
+  const nodeFilter = options?.nodeFilter;
+  const isMultiNode = nodeCount > 1;
+
+  if (isMultiNode) {
+    return tailMultiNode(slurm, jobId, outPath, errPath, {
+      silent: options?.silent,
+      stream,
+      nodeCount,
+      nodeFilter,
+    });
+  }
+
+  return tailSingleNode(slurm, jobId, outPath, errPath, {
+    silent: options?.silent,
+    stream,
+  });
+}
+
+// --------------- Single-node tailing (unchanged logic) ---------------
+
+async function tailSingleNode(
+  slurm: SlurmClient,
+  jobId: string,
+  outPath: string,
+  errPath: string,
+  options: { silent?: boolean; stream: LogStream },
+): Promise<JobResult> {
+  const { stream } = options;
   const trackOut = stream === "out" || stream === "both";
   const trackErr = stream === "err" || stream === "both";
 
   let lastOutLines = 0;
   let lastErrLines = 0;
 
-  if (!options?.silent) {
+  if (!options.silent) {
     const label =
       stream === "both"
         ? `stdout + stderr`
@@ -41,7 +89,6 @@ export async function tailJobLogs(
     console.log();
   }
 
-  /** Fetch and print any new lines since last check. Returns updated line counts. */
   async function fetchNewLines(
     prevOut: number,
     prevErr: number,
@@ -58,21 +105,19 @@ export async function tailJobLogs(
     const outTotal = trackOut ? parseInt(countResults[idx++] ?? "0", 10) : 0;
     const errTotal = trackErr ? parseInt(countResults[idx++] ?? "0", 10) : 0;
 
-    const readCmds: Array<{ type: "out" | "err"; cmd: string }> = [];
+    const readCmds: Array<{ cmd: string }> = [];
     if (trackOut && outTotal > prevOut) {
       readCmds.push({
-        type: "out",
         cmd: `tail -n +${prevOut + 1} ${outPath} 2>/dev/null | head -n ${outTotal - prevOut}`,
       });
     }
     if (trackErr && errTotal > prevErr) {
       readCmds.push({
-        type: "err",
         cmd: `tail -n +${prevErr + 1} ${errPath} 2>/dev/null | head -n ${errTotal - prevErr}`,
       });
     }
 
-    if (readCmds.length > 0 && !options?.silent) {
+    if (readCmds.length > 0 && !options.silent) {
       const readResults = await slurm.sshClient
         .execBatch(readCmds.map((r) => r.cmd))
         .catch(() => readCmds.map(() => ""));
@@ -80,7 +125,6 @@ export async function tailJobLogs(
       for (let i = 0; i < readCmds.length; i++) {
         const content = readResults[i];
         if (!content) continue;
-
         process.stdout.write(content + "\n");
       }
     }
@@ -92,57 +136,259 @@ export async function tailJobLogs(
     const jobs = await slurm.getJobs();
     const job = jobs.find((j) => j.id === jobId);
 
-    // Fetch and print new lines
     const counts = await fetchNewLines(lastOutLines, lastErrLines);
     lastOutLines = counts.outLines;
     lastErrLines = counts.errLines;
 
     if (!job || TERMINAL_STATES.has(job.state)) {
-      // Final flush: catch any lines written between the last wc -l and now
       await fetchNewLines(lastOutLines, lastErrLines);
-
-      // squeue may no longer have the job — ask scontrol for the real state
-      let finalState = job?.state;
-      let exitCode: number | undefined;
-      if (
-        !finalState ||
-        finalState === "COMPLETING" ||
-        finalState === "UNKNOWN"
-      ) {
-        const info = await slurm.getJobState(jobId);
-        if (info) {
-          exitCode = info.exitCode;
-          if (info.state === "COMPLETING") {
-            finalState = info.exitCode ? "FAILED" : "COMPLETED";
-          } else {
-            finalState = (info.state as typeof finalState) ?? "COMPLETED";
-          }
-        } else {
-          finalState = "COMPLETED";
-        }
-      } else if (finalState !== "COMPLETED") {
-        // Job in squeue with terminal state — still fetch exit code
-        const info = await slurm.getJobState(jobId);
-        if (info) exitCode = info.exitCode;
-      }
-
-      if (!options?.silent) {
-        const stateColor =
-          finalState === "COMPLETED" ? theme.success : theme.error;
-        console.log(
-          theme.muted(`\n  Job ${jobId} finished (`) +
-            stateColor(finalState) +
-            theme.muted(")."),
-        );
-      }
-
-      // Derive exit code: use scontrol value, or infer from state
-      const resolvedExitCode =
-        exitCode !== undefined ? exitCode : finalState === "COMPLETED" ? 0 : 1;
-
-      return { finalState: finalState!, exitCode: resolvedExitCode };
+      return resolveJobResult(slurm, jobId, job?.state, options.silent);
     }
 
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
+}
+
+// --------------- Multi-node tailing ---------------
+
+interface NodeFile {
+  nodeIndex: number;
+  type: "out" | "err";
+  path: string;
+  lastLines: number;
+}
+
+async function tailMultiNode(
+  slurm: SlurmClient,
+  jobId: string,
+  outPath: string,
+  errPath: string,
+  options: {
+    silent?: boolean;
+    stream: LogStream;
+    nodeCount: number;
+    nodeFilter?: number;
+  },
+): Promise<JobResult> {
+  const { stream, nodeCount, nodeFilter } = options;
+  const trackOut = stream === "out" || stream === "both";
+  const trackErr = stream === "err" || stream === "both";
+
+  // Build list of per-node files to track
+  const outPaths = deriveNodePaths(outPath, nodeCount);
+  const errPaths = deriveNodePaths(errPath, nodeCount);
+
+  const nodeFiles: NodeFile[] = [];
+  for (let i = 0; i < nodeCount; i++) {
+    if (nodeFilter !== undefined && i !== nodeFilter) continue;
+    if (trackOut) {
+      nodeFiles.push({
+        nodeIndex: i,
+        type: "out",
+        path: outPaths[i]!,
+        lastLines: 0,
+      });
+    }
+    if (trackErr) {
+      nodeFiles.push({
+        nodeIndex: i,
+        type: "err",
+        path: errPaths[i]!,
+        lastLines: 0,
+      });
+    }
+  }
+
+  // Track whether we've fallen back to sbatch-level files
+  let usingFallback = false;
+  let fallbackOutLines = 0;
+  let fallbackErrLines = 0;
+  let pollCount = 0;
+
+  if (!options.silent) {
+    const nodeLabel =
+      nodeFilter !== undefined ? `node ${nodeFilter}` : `${nodeCount} nodes`;
+    const streamLabel =
+      stream === "both"
+        ? `stdout + stderr`
+        : stream === "out"
+          ? "stdout"
+          : "stderr";
+    console.log(theme.muted(`\n  Tailing ${streamLabel} (${nodeLabel})...`));
+    console.log();
+  }
+
+  async function fetchNewLines(): Promise<void> {
+    if (usingFallback) {
+      // Fallback: tail sbatch-level files (same as single-node)
+      await fetchFallbackLines();
+      return;
+    }
+
+    // Count lines in all tracked per-node files
+    const countCmds = nodeFiles.map(
+      (nf) => `wc -l < ${nf.path} 2>/dev/null || echo 0`,
+    );
+    const countResults = await slurm.sshClient
+      .execBatch(countCmds)
+      .catch(() => countCmds.map(() => "0"));
+
+    // Parse counts and check if any files have content
+    const totals: number[] = [];
+    let anyContent = false;
+    for (let i = 0; i < nodeFiles.length; i++) {
+      const total = parseInt(countResults[i] ?? "0", 10);
+      totals.push(total);
+      if (total > 0) anyContent = true;
+    }
+
+    // Preamble fallback: if no per-node files have content after a few polls,
+    // check sbatch-level .err for preamble errors
+    if (!anyContent && pollCount >= 2) {
+      const errCheck = await slurm.sshClient
+        .exec(`wc -l < ${errPath} 2>/dev/null || echo 0`)
+        .catch(() => "0");
+      if (parseInt(errCheck.trim(), 10) > 0) {
+        usingFallback = true;
+        await fetchFallbackLines();
+        return;
+      }
+    }
+
+    // Read new lines from files that grew
+    const readCmds: Array<{ nodeFile: NodeFile; cmd: string }> = [];
+    for (let i = 0; i < nodeFiles.length; i++) {
+      const nf = nodeFiles[i]!;
+      const total = totals[i]!;
+      if (total > nf.lastLines) {
+        readCmds.push({
+          nodeFile: nf,
+          cmd: `tail -n +${nf.lastLines + 1} ${nf.path} 2>/dev/null | head -n ${total - nf.lastLines}`,
+        });
+      }
+    }
+
+    if (readCmds.length > 0 && !options.silent) {
+      const readResults = await slurm.sshClient
+        .execBatch(readCmds.map((r) => r.cmd))
+        .catch(() => readCmds.map(() => ""));
+
+      for (let i = 0; i < readCmds.length; i++) {
+        const content = readResults[i];
+        if (!content) continue;
+
+        const { nodeFile } = readCmds[i]!;
+        const prefix = theme.muted(`[node${nodeFile.nodeIndex}] `);
+        const lines = content.split("\n");
+        for (const line of lines) {
+          if (line.length === 0 && lines.indexOf(line) === lines.length - 1)
+            continue;
+          process.stdout.write(prefix + line + "\n");
+        }
+      }
+    }
+
+    // Update tracked line counts
+    for (let i = 0; i < nodeFiles.length; i++) {
+      nodeFiles[i]!.lastLines = totals[i]!;
+    }
+  }
+
+  async function fetchFallbackLines(): Promise<void> {
+    // Same logic as single-node but for sbatch-level files
+    const countCmds: string[] = [];
+    if (trackOut) countCmds.push(`wc -l < ${outPath} 2>/dev/null || echo 0`);
+    if (trackErr) countCmds.push(`wc -l < ${errPath} 2>/dev/null || echo 0`);
+
+    const countResults = await slurm.sshClient
+      .execBatch(countCmds)
+      .catch(() => countCmds.map(() => "0"));
+
+    let idx = 0;
+    const outTotal = trackOut ? parseInt(countResults[idx++] ?? "0", 10) : 0;
+    const errTotal = trackErr ? parseInt(countResults[idx++] ?? "0", 10) : 0;
+
+    const readCmds: string[] = [];
+    if (trackOut && outTotal > fallbackOutLines) {
+      readCmds.push(
+        `tail -n +${fallbackOutLines + 1} ${outPath} 2>/dev/null | head -n ${outTotal - fallbackOutLines}`,
+      );
+    }
+    if (trackErr && errTotal > fallbackErrLines) {
+      readCmds.push(
+        `tail -n +${fallbackErrLines + 1} ${errPath} 2>/dev/null | head -n ${errTotal - fallbackErrLines}`,
+      );
+    }
+
+    if (readCmds.length > 0 && !options.silent) {
+      const readResults = await slurm.sshClient
+        .execBatch(readCmds)
+        .catch(() => readCmds.map(() => ""));
+      for (const content of readResults) {
+        if (content) process.stdout.write(content + "\n");
+      }
+    }
+
+    fallbackOutLines = outTotal;
+    fallbackErrLines = errTotal;
+  }
+
+  while (true) {
+    const jobs = await slurm.getJobs();
+    const job = jobs.find((j) => j.id === jobId);
+
+    await fetchNewLines();
+    pollCount++;
+
+    if (!job || TERMINAL_STATES.has(job.state)) {
+      // Final flush
+      await fetchNewLines();
+      return resolveJobResult(slurm, jobId, job?.state, options.silent);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+}
+
+// --------------- Shared exit resolution ---------------
+
+async function resolveJobResult(
+  slurm: SlurmClient,
+  jobId: string,
+  jobState: string | undefined,
+  silent?: boolean,
+): Promise<JobResult> {
+  let finalState = jobState;
+  let exitCode: number | undefined;
+
+  if (!finalState || finalState === "COMPLETING" || finalState === "UNKNOWN") {
+    const info = await slurm.getJobState(jobId);
+    if (info) {
+      exitCode = info.exitCode;
+      if (info.state === "COMPLETING") {
+        finalState = info.exitCode ? "FAILED" : "COMPLETED";
+      } else {
+        finalState = (info.state as typeof finalState) ?? "COMPLETED";
+      }
+    } else {
+      finalState = "COMPLETED";
+    }
+  } else if (finalState !== "COMPLETED") {
+    const info = await slurm.getJobState(jobId);
+    if (info) exitCode = info.exitCode;
+  }
+
+  if (!silent) {
+    const stateColor = finalState === "COMPLETED" ? theme.success : theme.error;
+    console.log(
+      theme.muted(`\n  Job ${jobId} finished (`) +
+        stateColor(finalState) +
+        theme.muted(")."),
+    );
+  }
+
+  const resolvedExitCode =
+    exitCode !== undefined ? exitCode : finalState === "COMPLETED" ? 0 : 1;
+
+  return { finalState: finalState!, exitCode: resolvedExitCode };
 }

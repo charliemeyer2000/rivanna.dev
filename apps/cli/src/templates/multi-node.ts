@@ -1,4 +1,5 @@
 import type { TemplateOptions } from "@rivanna/shared";
+import { PATHS } from "@rivanna/shared";
 import { generatePreamble, generateEpilogue } from "./base.ts";
 
 // --------------- Helpers ---------------
@@ -102,11 +103,17 @@ export function generateMultiNodeScript(opts: TemplateOptions): string {
     "export MACHINE_RANK=$SLURM_PROCID",
   ].join("; ");
 
+  // Per-node log files: srun --output/--error with %t (task ID = node index)
+  const logDir = PATHS.logs(opts.user);
+
   lines.push(`# Run distributed command`);
   lines.push(
     `# bash -c ensures SLURM_PROCID expands per-task, not in sbatch context`,
   );
-  lines.push(`srun --export=ALL bash -c '${envSetup}; exec ${escaped}'`);
+  lines.push(
+    `srun --output=${logDir}/%x-%j.node%t.out --error=${logDir}/%x-%j.node%t.err \\`,
+  );
+  lines.push(`     --export=ALL bash -c '${envSetup}; exec ${escaped}'`);
 
   lines.push(generateEpilogue(opts));
 

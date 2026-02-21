@@ -273,6 +273,10 @@ export default function CommandsPage() {
             description: "follow log output",
             default: "auto for running jobs",
           },
+          {
+            flag: "--node <index>",
+            description: "show specific node's output (multi-node jobs)",
+          },
         ]}
       >
         <div className="space-y-2 mt-3">
@@ -286,6 +290,15 @@ export default function CommandsPage() {
             <code className="text-sm text-black">
               rv logs --pull
               <span className="text-gray-400"> # download log files</span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv logs 12345 --node 1
+              <span className="text-gray-400">
+                {" "}
+                # view node 1 output (multi-node)
+              </span>
             </code>
           </CodeBlock>
         </div>

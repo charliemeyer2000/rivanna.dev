@@ -242,16 +242,32 @@ async function runRun(commandParts: string[], options: RunOptions) {
     const logBase = `/scratch/${config.connection.user}/.rv/logs/${request.jobName}-${winner.jobId}`;
     const outPath = `${logBase}.out`;
     const errPath = `${logBase}.err`;
+    const nodeCount = winner.strategy.nodes;
     const jobResult = await tailJobLogs(slurm, winner.jobId, outPath, errPath, {
       silent: isJson,
+      nodeCount,
     });
 
     // Check for hardware failure → auto-retry with node exclusion
     if (jobResult.exitCode !== 0 && !isJson) {
       const elapsedSeconds = Math.round((Date.now() - jobStartMs) / 1000);
-      const errContent = await ssh
-        .exec(`tail -n 100 ${errPath} 2>/dev/null || true`)
-        .catch(() => "");
+      let errContent: string;
+      if (nodeCount > 1) {
+        const nodeErrPaths = Array.from(
+          { length: nodeCount },
+          (_, i) => `${logBase}.node${i}.err`,
+        );
+        const results = await ssh
+          .execBatch(
+            nodeErrPaths.map((p) => `tail -n 50 ${p} 2>/dev/null || true`),
+          )
+          .catch(() => [] as string[]);
+        errContent = results.join("\n");
+      } else {
+        errContent = await ssh
+          .exec(`tail -n 100 ${errPath} 2>/dev/null || true`)
+          .catch(() => "");
+      }
       const retry = analyzeForHardwareRetry(
         errContent,
         winner.nodes,
@@ -281,7 +297,15 @@ async function runRun(commandParts: string[], options: RunOptions) {
       if (execution?.workDir) {
         console.log(theme.muted(`    Snapshot:     ${execution.workDir}`));
       }
-      console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
+      if (nodeCount > 1) {
+        console.log(
+          theme.muted(
+            `    Logs:         ${logBase}.node{0..${nodeCount - 1}}.{out,err}`,
+          ),
+        );
+      } else {
+        console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
+      }
       console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
       if (execution?.git) {
         const dirty = execution.git.dirty ? "*" : "";
