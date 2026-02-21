@@ -33,6 +33,7 @@ const docNavItems = [
       { label: "rv env", id: "rv-env" },
       { label: "rv cost", id: "rv-cost" },
       { label: "rv exec", id: "rv-exec" },
+      { label: "rv gpu", id: "rv-gpu" },
       { label: "rv upgrade", id: "rv-upgrade" },
       { label: "rv init", id: "rv-init" },
     ],
@@ -64,9 +65,11 @@ const docNavItems = [
   },
   {
     href: "/docs/gpu-training",
-    label: "gpu training",
+    label: "guides",
     subheadings: [
-      { label: "overview", id: "overview" },
+      { label: "tips & gotchas", id: "tips" },
+      { label: "queue times", id: "queue-times" },
+      { label: "training overview", id: "overview" },
       { label: "process groups", id: "process-groups" },
       { label: "ddp", id: "ddp" },
       { label: "fsdp", id: "fsdp" },
@@ -74,6 +77,7 @@ const docNavItems = [
       { label: "checkpointing", id: "checkpointing" },
       { label: "rlhf & grpo", id: "rlhf" },
       { label: "debugging", id: "debugging" },
+      { label: "troubleshooting", id: "troubleshooting" },
     ],
   },
 ];

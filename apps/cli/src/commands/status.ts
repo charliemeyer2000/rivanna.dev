@@ -13,6 +13,7 @@ import { theme } from "@/lib/theme.ts";
 import { renderTable } from "@/lib/table.ts";
 import {
   stateColor,
+  formatHumanTime,
   buildStrategyIndex,
   renderStrategySubLines,
   formatOrphanJobRow,
@@ -130,7 +131,7 @@ function renderStatusRequestGroup(request: RequestRecord, jobs: Job[]): void {
   // Compact parent line for status dashboard
   const name = request.jobName.slice(0, 20).padEnd(21);
   const stateStr = colorFn(aggregateState.padEnd(10));
-  const timeStr = `${representative.timeElapsed}/${representative.timeLimit}`;
+  const timeStr = `${formatHumanTime(representative.timeElapsedSeconds)}/${formatHumanTime(representative.timeLimitSeconds)}`;
 
   console.log(`  ${name}${stateStr}${timeStr}`);
 

@@ -11,6 +11,7 @@ interface StopOptions {
 export function registerStopCommand(program: Command) {
   program
     .command("stop")
+    .alias("cancel")
     .description("Cancel jobs on Rivanna")
     .argument("[jobId]", "job ID to cancel")
     .option("-a, --all", "cancel all your jobs")

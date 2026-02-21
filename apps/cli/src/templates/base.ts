@@ -121,6 +121,7 @@ export function generatePreamble(opts: TemplateOptions): string {
     lines.push(`export OMP_NUM_THREADS=1`);
   }
   lines.push(`export TOKENIZERS_PARALLELISM=false`);
+  lines.push(`export PYTHONUNBUFFERED=1`);
   lines.push("");
 
   // Dynamic MASTER_PORT prevents collisions when multiple torchrun/DDP

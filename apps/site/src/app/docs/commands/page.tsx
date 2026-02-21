@@ -180,6 +180,27 @@ export default function CommandsPage() {
           },
         ]}
       >
+        <div className="border-l-4 border-orange-accent bg-orange-accent/5 p-4 mt-3">
+          <p className="text-sm font-medium text-black mb-1">
+            important: argument ordering
+          </p>
+          <p className="text-sm text-gray-600">
+            rv options must come <strong>before</strong> the command. Options
+            placed after the command are passed through to it silently.
+          </p>
+          <div className="mt-2 space-y-1 text-sm font-mono">
+            <p className="text-green-700">
+              rv run -g 4 -t a100 python train.py ✓
+            </p>
+            <p className="text-red-600">
+              rv run python train.py -g 4 -t a100 ✗
+            </p>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            rv run uploads the current working directory as the job workspace.
+            Only git-tracked files are synced.
+          </p>
+        </div>
         <div className="space-y-2 mt-3">
           <p className="text-xs text-gray-500">more examples:</p>
           <CodeBlock>
@@ -199,7 +220,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-ps"
         name="rv ps"
-        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row. Displays git branch and commit hash when available. Automatically cancels losing fan-out strategies when a winner starts running."
+        description="List your jobs on Rivanna. Also available as rv ls. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row. Displays git branch and commit hash when available. Automatically cancels losing fan-out strategies when a winner starts running."
         usage="rv ps"
         options={[
           {
@@ -212,7 +233,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-stop"
         name="rv stop"
-        description="Cancel jobs on Rivanna. Pass a job ID to cancel a specific job, or use --all to cancel everything."
+        description="Cancel jobs on Rivanna. Also available as rv cancel. Pass a job ID to cancel a specific job, or use --all to cancel everything."
         usage="rv stop 12345"
         options={[
           {
@@ -476,6 +497,28 @@ export default function CommandsPage() {
           <CodeBlock>
             <code className="text-sm text-black">
               rv exec &quot;pip list | grep torch&quot;
+            </code>
+          </CodeBlock>
+        </div>
+      </CommandSection>
+
+      <CommandSection
+        id="rv-gpu"
+        name="rv gpu"
+        description="Show GPU utilization for a running job via nvidia-smi. Defaults to the most recent running job if no ID is given."
+        usage="rv gpu"
+        options={[
+          {
+            flag: "[jobId]",
+            description: "job ID (defaults to most recent running job)",
+          },
+        ]}
+      >
+        <div className="space-y-2 mt-3">
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv gpu 12345
+              <span className="text-gray-400"> # specific job</span>
             </code>
           </CodeBlock>
         </div>

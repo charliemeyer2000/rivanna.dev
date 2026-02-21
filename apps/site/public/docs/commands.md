@@ -29,6 +29,18 @@ rv up --dry-run          # preview strategies
 
 Run a command on Rivanna GPUs. Syncs local files to a git-aware workspace, creates an immutable snapshot, submits strategies across compatible GPU types, and exits. by default, returns immediately after submission — use `rv ps` to check status and `rv logs -f` to follow output. pass `-f` to wait for allocation and tail logs inline. losing strategies from fan-out are automatically cleaned up by `rv ps`.
 
+**Important: argument ordering.** rv options must come BEFORE the command. Options placed after the command are passed through to it silently. rv will warn if it detects misplaced flags.
+
+```bash
+# correct — options before command
+rv run -g 4 -t a100 python train.py
+
+# wrong — -g 4 becomes a python argument
+rv run python train.py -g 4 -t a100
+```
+
+`rv run` uploads the current working directory as the job workspace. Only git-tracked files are synced (respects `.gitignore`). You can add a `.rvignore` file to exclude additional files.
+
 ```bash
 rv run python train.py
 ```
@@ -50,6 +62,8 @@ rv run -f torchrun --nproc_per_node=4 train.py   # wait + tail logs
 
 ## rv ps
 
+Also available as `rv ls`.
+
 List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. when git metadata is available, displays the branch and commit hash alongside each job group. automatically cancels losing fan-out strategies when a winner starts running.
 
 ```bash
@@ -61,6 +75,8 @@ rv ps
 | `-a, --all` | include completed/failed jobs (last 7 days) |
 
 ## rv stop
+
+Also available as `rv cancel`.
 
 Cancel jobs on Rivanna. Pass a job ID to cancel a specific job, or use --all to cancel everything.
 
@@ -215,6 +231,15 @@ Run a command on the Rivanna login node (no GPU allocation). Useful for checking
 rv exec allocations
 rv exec ls /scratch/user
 rv exec which python
+```
+
+## rv gpu
+
+Show GPU utilization for a running job via nvidia-smi. Defaults to the most recent running job if no ID is given.
+
+```bash
+rv gpu
+rv gpu 12345    # specific job
 ```
 
 ## rv upgrade

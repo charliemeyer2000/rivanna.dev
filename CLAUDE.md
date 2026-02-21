@@ -2,7 +2,7 @@
 
 `rv` is a CLI for GPU computing on UVA's Rivanna HPC cluster. It wraps SLURM, handles file syncing, and manages jobs. This doc covers everything an agent needs to use it effectively.
 
-Full docs: `apps/site/public/docs/` (commands.md, configuration.md, allocator.md, gpu-training.md, getting-started.md)
+Full docs: `apps/site/public/docs/` (commands.md, configuration.md, allocator.md, gpu-training.md, getting-started.md, tips.md)
 
 ## Quick Reference
 
@@ -13,17 +13,20 @@ rv run -t a100 --time 3h --name "my-job" python train.py
 # Submit and wait for output
 rv run -t a100 --time 3h --name "my-job" -f python train.py
 
-# Check job status
+# Check job status (also: rv ls)
 rv ps
 
 # View logs (auto-follows running jobs)
 rv logs <jobId>
 
-# Cancel a job
+# Cancel a job (also: rv cancel)
 rv stop <jobId>
 
 # Run a quick command on login node (no GPU)
 rv exec "ls /scratch/abs6bd/"
+
+# Check GPU utilization of a running job
+rv gpu <jobId>
 
 # Set environment variable for all future jobs
 rv env set KEY VALUE
@@ -46,11 +49,13 @@ rv sync pull /scratch/abs6bd/results ./local_results/
 
 ## Critical Gotchas (from real usage)
 
-### 1. The command to cancel is `rv stop`, NOT `rv cancel`
+### 1. `rv stop` and `rv cancel` are the same command
+
+Both work — `rv cancel` is an alias for `rv stop`:
 
 ```bash
-rv stop <jobId>      # correct
-rv cancel <jobId>    # WRONG — this command doesn't exist
+rv stop <jobId>      # works
+rv cancel <jobId>    # also works (alias)
 ```
 
 ### 2. `rv ps` time format
@@ -61,15 +66,9 @@ Times display as `MM:SS` for short durations, `H:MM:SS` for longer ones, and `D-
 - `1:01:29` = 1 hr 1 min 29 sec
 - `1-01:29:00` = 1 day 1 hr 29 min
 
-### 3. Python stdout buffering
+### 3. Python stdout buffering (auto-handled)
 
-When Python writes to files (not a TTY), stdout is fully buffered. Jobs will appear to produce no output for minutes/hours. **Always set this:**
-
-```bash
-rv env set PYTHONUNBUFFERED 1
-```
-
-This affects all future jobs. Alternatively, run Python with `-u`: `python -u train.py`
+rv automatically sets `PYTHONUNBUFFERED=1` in every job, so Python output appears in real time. If you still see no output, the script may be writing to a file or using internal buffering. You can also force it manually with `python -u train.py`.
 
 ### 4. Job logs location
 
@@ -83,10 +82,11 @@ rv logs <jobId> --pull   # download locally
 
 ### 5. Checking GPU utilization of running jobs
 
-`rv` doesn't have a built-in GPU utilization command. Use SLURM directly:
+Use `rv gpu` to check GPU utilization of a running job:
 
 ```bash
-rv exec "srun --jobid=<jobId> --overlap nvidia-smi"
+rv gpu              # most recent running job
+rv gpu <jobId>      # specific job
 ```
 
 ### 6. `rv exec` runs on the login node

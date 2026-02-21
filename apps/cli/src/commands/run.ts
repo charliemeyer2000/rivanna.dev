@@ -72,7 +72,34 @@ export function registerRunCommand(program: Command) {
     });
 }
 
+const RV_RUN_FLAGS = new Set([
+  "-g",
+  "--gpu",
+  "-t",
+  "--type",
+  "--time",
+  "--name",
+  "--mem",
+  "--mig",
+  "--json",
+  "-f",
+  "--follow",
+]);
+
+function warnMisplacedFlags(commandParts: string[]): void {
+  const misplaced = commandParts.filter((p) => RV_RUN_FLAGS.has(p));
+  if (misplaced.length > 0) {
+    console.error(
+      theme.warning(
+        `\n  ⚠ ${misplaced.join(", ")} appeared after the command and will be passed through to it.\n` +
+          `    rv options must come BEFORE the command: rv run ${misplaced.join(" ")} ... <command>\n`,
+      ),
+    );
+  }
+}
+
 async function runRun(commandParts: string[], options: RunOptions) {
+  warnMisplacedFlags(commandParts);
   const { config, slurm } = ensureSetup();
   const ssh = slurm.sshClient;
   const isJson = !!options.json;

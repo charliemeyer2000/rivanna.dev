@@ -12,6 +12,7 @@ import { registerForwardCommand } from "./src/commands/forward.ts";
 import { registerEnvCommand } from "./src/commands/env.ts";
 import { registerCostCommand } from "./src/commands/cost.ts";
 import { registerExecCommand } from "./src/commands/exec.ts";
+import { registerGpuCommand } from "./src/commands/gpu.ts";
 import { registerUpgradeCommand } from "./src/commands/upgrade.ts";
 import { checkForUpdate } from "./src/lib/version-check.ts";
 
@@ -39,6 +40,7 @@ async function main() {
   registerEnvCommand(program);
   registerCostCommand(program);
   registerExecCommand(program);
+  registerGpuCommand(program);
   registerUpgradeCommand(program);
 
   await checkForUpdate().catch(() => {});

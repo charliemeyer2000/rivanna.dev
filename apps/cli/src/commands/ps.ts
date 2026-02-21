@@ -8,6 +8,7 @@ import { renderTable, renderInteractiveTable } from "@/lib/table.ts";
 import {
   stateColor,
   formatStartEta,
+  formatHumanTime,
   buildStrategyIndex,
   renderStrategySubLines,
   formatOrphanJobRow,
@@ -28,6 +29,7 @@ interface PsOptions {
 export function registerPsCommand(program: Command) {
   program
     .command("ps")
+    .alias("ls")
     .description("List your jobs on Rivanna")
     .option("-a, --all", "include completed/failed jobs (last 7 days)")
     .option("--json", "output as JSON")
@@ -71,8 +73,8 @@ function renderRequestGroup(request: RequestRecord, jobs: Job[]): void {
   const termWidth = process.stdout.columns ?? 100;
   const name = request.jobName.slice(0, 20).padEnd(21);
   const stateStr = colorFn(aggregateState.padEnd(10));
-  const elapsed = representative.timeElapsed.padEnd(8);
-  const limit = representative.timeLimit;
+  const elapsed = formatHumanTime(representative.timeElapsedSeconds).padEnd(8);
+  const limit = formatHumanTime(representative.timeLimitSeconds);
 
   // Truncate command to fit remaining width
   // Layout: 2 indent + 21 name + cmd + 10 state + 8 elapsed + 7 limit = ~48 fixed
@@ -185,7 +187,7 @@ async function runPs(options: PsOptions) {
         job.name.slice(0, 17),
         job.partition,
         colorFn(job.state),
-        job.elapsed,
+        formatHumanTime(job.elapsedSeconds),
         job.exitCode,
       ];
     });

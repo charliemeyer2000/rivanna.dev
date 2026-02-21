@@ -2,9 +2,9 @@ import { Metadata } from "next";
 import { CodeBlock } from "../_components/code-block";
 
 export const metadata: Metadata = {
-  title: "gpu training | rivanna.dev docs",
+  title: "guides | rivanna.dev docs",
   description:
-    "distributed training best practices for DDP, FSDP, mixed precision, checkpointing, and RLHF on Rivanna",
+    "GPU training best practices, common tips, and troubleshooting for rv CLI on Rivanna",
 };
 
 function Tip({ children }: { children: React.ReactNode }) {
@@ -70,85 +70,181 @@ function StrategyTable() {
   );
 }
 
-export default function GpuTrainingPage() {
+export default function GuidesPage() {
   return (
     <div className="space-y-8">
       <section>
-        <h2 className="text-xl font-semibold mb-4">gpu training</h2>
+        <h2 className="text-xl font-semibold mb-4">guides</h2>
         <p className="text-gray-600 mb-2">
-          best practices for distributed training on Rivanna. covers DDP, FSDP,
-          mixed precision, checkpointing, RLHF, and common debugging patterns.
-        </p>
-        <p className="text-sm text-gray-500">
-          everything here was verified on Rivanna across 10 test suites (52/53
-          passed) using A6000, A100, and MIG GPUs.
+          tips, GPU training best practices, and troubleshooting — all verified
+          on Rivanna.
         </p>
       </section>
 
-      {/* ── Overview ─────────────────────────────────────────────── */}
+      {/* ── Tips & Gotchas ─────────────────────────────────────── */}
+      <section
+        id="tips"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">tips & gotchas</h3>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            argument ordering
+          </p>
+          <p className="text-sm text-gray-600">
+            rv options must come <strong>before</strong> the command. anything
+            after is passed through. rv warns if it detects misplaced flags.
+          </p>
+          <div className="mt-2 space-y-1 text-sm font-mono">
+            <p className="text-green-700">
+              rv run -g 4 -t a100 python train.py ✓
+            </p>
+            <p className="text-red-600">
+              rv run python train.py -g 4 -t a100 ✗
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">file sync</p>
+          <p className="text-sm text-gray-600">
+            <code className="text-orange-accent">rv run</code> uploads your
+            current directory. only git-tracked files sync. each job gets an
+            immutable snapshot. use{" "}
+            <code className="text-orange-accent">.rvignore</code> to exclude
+            extra files.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            output buffering
+          </p>
+          <p className="text-sm text-gray-600">
+            rv auto-sets{" "}
+            <code className="text-orange-accent">PYTHONUNBUFFERED=1</code>. if
+            you still see no output, check{" "}
+            <code className="text-orange-accent">rv logs --err</code> — the job
+            may have crashed.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            rv exec is login-node only
+          </p>
+          <p className="text-sm text-gray-600">
+            no GPU access. use for file checks and queries. for GPU utilization,
+            use <code className="text-orange-accent">rv gpu</code>.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            backfill scheduling
+          </p>
+          <p className="text-sm text-gray-600">
+            jobs under 3 hours qualify for backfill — often near-instant
+            allocation. the default walltime (2:59:00) is set just below this
+            threshold.
+          </p>
+        </div>
+      </section>
+
+      {/* ── Queue Times ────────────────────────────────────────── */}
+      <section
+        id="queue-times"
+        className="border border-gray-200 p-4 sm:p-6 space-y-3"
+      >
+        <h3 className="text-lg font-semibold text-black">queue times</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border border-gray-200">
+            <thead>
+              <tr className="bg-gray-50 text-left">
+                <th className="px-3 py-2 border-b border-gray-200 font-medium">
+                  GPU
+                </th>
+                <th className="px-3 py-2 border-b border-gray-200 font-medium">
+                  typical wait
+                </th>
+                <th className="px-3 py-2 border-b border-gray-200 font-medium">
+                  SU/GPU-hr
+                </th>
+                <th className="px-3 py-2 border-b border-gray-200 font-medium">
+                  VRAM
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { gpu: "mig", wait: "instant", su: "FREE", vram: "10 GB" },
+                { gpu: "v100", wait: "~3 days", su: "21", vram: "32 GB" },
+                { gpu: "a6000", wait: "~18 hours", su: "143", vram: "48 GB" },
+                { gpu: "a100", wait: "~10 hours", su: "509", vram: "80 GB" },
+                { gpu: "h200", wait: "varies", su: "817", vram: "141 GB" },
+              ].map((r) => (
+                <tr key={r.gpu} className="border-b border-gray-100">
+                  <td className="px-3 py-2 font-mono text-xs">{r.gpu}</td>
+                  <td className="px-3 py-2 text-gray-600">{r.wait}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{r.su}</td>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{r.vram}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-gray-500">
+          check real-time availability with{" "}
+          <code className="text-orange-accent">rv status</code>.
+        </p>
+      </section>
+
+      {/* ── Training Overview ──────────────────────────────────── */}
       <section
         id="overview"
         className="border border-gray-200 p-4 sm:p-6 space-y-4"
       >
-        <h3 className="text-lg font-semibold text-black">overview</h3>
-        <p className="text-sm text-gray-600">
-          pick the right setup for your workload:
-        </p>
+        <h3 className="text-lg font-semibold text-black">training overview</h3>
 
         <div className="space-y-3">
           <div>
-            <p className="text-sm font-medium text-black mb-1">
-              single GPU (MIG or dedicated)
-            </p>
+            <p className="text-sm font-medium text-black mb-1">single GPU</p>
             <CodeBlock>
               <code className="text-sm text-black">
-                {`# free MIG slice — good for testing
-rv run --mig --time 10m -- python train.py
-
-# dedicated GPU
-rv run --gpu 1 --type a6000 --time 1h -- python train.py`}
+                {`rv run --mig python train.py              # free MIG slice
+rv run -g 1 -t a6000 python train.py      # dedicated GPU`}
               </code>
             </CodeBlock>
-            <p className="text-xs text-gray-500 mt-1">
-              no torchrun, no init_process_group. use torch.amp.autocast for
-              mixed precision.
-            </p>
           </div>
 
           <div>
             <p className="text-sm font-medium text-black mb-1">
-              multi-GPU, single node (DDP/FSDP)
+              multi-GPU (DDP/FSDP)
             </p>
             <CodeBlock>
               <code className="text-sm text-black">
-                rv run --gpu 2 --type a6000 --time 1h -- torchrun
-                --nproc_per_node=2 train.py
+                rv run -g 2 -t a6000 -- torchrun --nproc_per_node=2 train.py
               </code>
             </CodeBlock>
-            <p className="text-xs text-gray-500 mt-1">
-              torchrun sets RANK, LOCAL_RANK, WORLD_SIZE, MASTER_ADDR,
-              MASTER_PORT. NCCL uses NVLink/PCIe.
-            </p>
           </div>
 
           <div>
             <p className="text-sm font-medium text-black mb-1">multi-node</p>
             <CodeBlock>
               <code className="text-sm text-black">
-                rv run --gpu 4 --type a100 --time 2h -- torchrun
-                --nproc_per_node=2 train.py
+                rv run -g 4 -t a100 -- torchrun --nproc_per_node=2 train.py
               </code>
             </CodeBlock>
             <p className="text-xs text-gray-500 mt-1">
-              rv handles srun + torchrun coordination. NCCL uses InfiniBand
-              across nodes. increase NCCL timeout for large models.
+              rv handles srun + torchrun coordination automatically.
             </p>
           </div>
         </div>
 
         <Tip>
-          BF16 on A100/H100 (compute capability {">"}= 8), FP16 on older GPUs
-          (A6000, V100).
+          BF16 on A100/H200 (compute capability {">"}= 8). FP16 + GradScaler on
+          older GPUs.
         </Tip>
       </section>
 
@@ -159,117 +255,59 @@ rv run --gpu 1 --type a6000 --time 1h -- python train.py`}
       >
         <h3 className="text-lg font-semibold text-black">process groups</h3>
         <p className="text-sm text-gray-600">
-          NCCL for GPU tensors, Gloo for CPU tensors. using the wrong backend
-          hangs silently.
+          NCCL for GPU tensors, Gloo for CPU tensors. wrong backend = silent
+          hang.
         </p>
 
         <CodeBlock>
           <code className="text-sm text-black">
-            {`import torch.distributed as dist
+            {`dist.init_process_group("nccl")  # GPU default
 
-dist.init_process_group("nccl")  # GPU training default
-
-# for CPU collectives (gathering strings, dicts, metadata):
+# CPU collectives (strings, dicts, metadata):
 cpu_group = dist.new_group(backend="gloo")
 dist.all_gather_object(output_list, my_dict, group=cpu_group)`}
           </code>
         </CodeBlock>
-
-        <p className="text-sm text-gray-600">you need Gloo for:</p>
-        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-          <li>
-            gathering non-tensor objects (dicts, strings, reward metadata)
-          </li>
-          <li>CPU-only operations in RLHF (reward aggregation across nodes)</li>
-          <li>
-            any{" "}
-            <code className="text-xs bg-gray-100 px-1">all_gather_object</code>{" "}
-            /{" "}
-            <code className="text-xs bg-gray-100 px-1">
-              broadcast_object_list
-            </code>{" "}
-            call
-          </li>
-          <li>Ray actor communication that doesn&apos;t go through GPU</li>
-        </ul>
-
-        <Tip>
-          common mistake: using NCCL for CPU tensors. it won&apos;t error — it
-          just hangs forever.
-        </Tip>
       </section>
 
       {/* ── DDP ──────────────────────────────────────────────────── */}
       <section id="ddp" className="border border-gray-200 p-4 sm:p-6 space-y-4">
-        <h3 className="text-lg font-semibold text-black">
-          DDP (DistributedDataParallel)
-        </h3>
+        <h3 className="text-lg font-semibold text-black">DDP</h3>
 
         <CodeBlock>
           <code className="text-sm text-black">
-            {`model = DDP(model, device_ids=[local_rank])`}
+            model = DDP(model, device_ids=[local_rank])
           </code>
         </CodeBlock>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">footguns</p>
-          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-            <li>
-              <strong>never call model.module.forward() directly</strong> —
-              bypasses gradient sync, causes hangs or wrong gradients
-            </li>
-            <li>
-              if some parameters don&apos;t get gradients (multi-head,
-              conditional branches): use{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                find_unused_parameters=True
-              </code>
-            </li>
-            <li>
-              <code className="text-xs bg-gray-100 px-1">
-                find_unused_parameters=True
-              </code>{" "}
-              adds overhead — only use when needed
-            </li>
-            <li>
-              save with{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                model.module.state_dict()
-              </code>{" "}
-              (unwrap DDP), load into plain model, then re-wrap
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            activation checkpointing with DDP
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`class CheckpointedModel(nn.Module):
-    def __init__(self, base):
-        super().__init__()
-        self.base = base
-    def forward(self, x):
-        return torch.utils.checkpoint.checkpoint(self.base, x, use_reentrant=False)
-
-model = DDP(CheckpointedModel(base_model), device_ids=[local_rank])`}
-            </code>
-          </CodeBlock>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">data loading</p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`sampler = DistributedSampler(dataset, shuffle=True)
-loader = DataLoader(dataset, sampler=sampler, batch_size=per_gpu_batch)
-for epoch in range(epochs):
-    sampler.set_epoch(epoch)  # CRITICAL: different shuffle per epoch`}
-            </code>
-          </CodeBlock>
-        </div>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+          <li>
+            never call{" "}
+            <code className="text-xs bg-gray-100 px-1">
+              model.module.forward()
+            </code>{" "}
+            directly — bypasses gradient sync
+          </li>
+          <li>
+            <code className="text-xs bg-gray-100 px-1">
+              find_unused_parameters=True
+            </code>{" "}
+            for conditional/multi-head models
+          </li>
+          <li>
+            save with{" "}
+            <code className="text-xs bg-gray-100 px-1">
+              model.module.state_dict()
+            </code>{" "}
+            (unwrap DDP)
+          </li>
+          <li>
+            <code className="text-xs bg-gray-100 px-1">
+              sampler.set_epoch(epoch)
+            </code>{" "}
+            in every epoch for correct shuffling
+          </li>
+        </ul>
       </section>
 
       {/* ── FSDP ─────────────────────────────────────────────────── */}
@@ -277,92 +315,39 @@ for epoch in range(epochs):
         id="fsdp"
         className="border border-gray-200 p-4 sm:p-6 space-y-4"
       >
-        <h3 className="text-lg font-semibold text-black">
-          FSDP (Fully Sharded Data Parallel)
-        </h3>
+        <h3 className="text-lg font-semibold text-black">FSDP</h3>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            sharding strategies
-          </p>
-          <StrategyTable />
-        </div>
+        <StrategyTable />
 
         <div>
           <p className="text-sm font-medium text-black mb-2">wrapping policy</p>
           <CodeBlock>
             <code className="text-sm text-black">
-              {`# NEVER use always_wrap_policy — wraps every tiny layer, massive overhead
+              {`# NEVER use always_wrap_policy
 from torch.distributed.fsdp.wrap import size_based_auto_wrap_policy
-import functools
-
-auto_wrap_policy = functools.partial(
-    size_based_auto_wrap_policy, min_num_params=1_000_000
-)
+auto_wrap_policy = functools.partial(size_based_auto_wrap_policy, min_num_params=1_000_000)
 model = FSDP(model, auto_wrap_policy=auto_wrap_policy, ...)`}
             </code>
           </CodeBlock>
-          <p className="text-xs text-gray-500 mt-2">
-            for transformer models, use{" "}
-            <code className="text-xs bg-gray-100 px-1">
-              transformer_auto_wrap_policy
-            </code>{" "}
-            with your specific layer class.
-          </p>
         </div>
 
         <div>
-          <p className="text-sm font-medium text-black mb-2">
-            mixed precision with FSDP
-          </p>
+          <p className="text-sm font-medium text-black mb-2">mixed precision</p>
           <CodeBlock>
             <code className="text-sm text-black">
-              {`from torch.distributed.fsdp import MixedPrecision
-
-mp_policy = MixedPrecision(
-    param_dtype=torch.bfloat16,     # model params in bf16
-    reduce_dtype=torch.float32,      # gradient reduction in fp32 (important!)
+              {`mp_policy = MixedPrecision(
+    param_dtype=torch.bfloat16,
+    reduce_dtype=torch.float32,  # gradient reduction in fp32
     buffer_dtype=torch.bfloat16,
 )
-model = FSDP(model, mixed_precision=mp_policy, ...)`}
+model = FSDP(model, mixed_precision=mp_policy)`}
             </code>
           </CodeBlock>
         </div>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">CPU offload</p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`from torch.distributed.fsdp import CPUOffload
-
-model = FSDP(model, cpu_offload=CPUOffload(offload_params=True))`}
-            </code>
-          </CodeBlock>
-          <p className="text-xs text-gray-500 mt-2">
-            saves ~29% GPU memory but 26x slower in our tests. only use if model
-            doesn&apos;t fit in GPU memory.
-          </p>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            state dict save/load
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`from torch.distributed.fsdp import FullStateDictConfig, StateDictType
-
-save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
-    state = model.state_dict()
-    if rank == 0:
-        torch.save(state, "model.pt")`}
-            </code>
-          </CodeBlock>
-          <p className="text-xs text-gray-500 mt-2">
-            these APIs are deprecated in favor of torch.distributed.checkpoint.
-          </p>
-        </div>
+        <Tip>
+          CPU offload saves ~29% GPU memory but is 26x slower. last resort only.
+        </Tip>
       </section>
 
       {/* ── Mixed Precision ──────────────────────────────────────── */}
@@ -372,42 +357,23 @@ with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
       >
         <h3 className="text-lg font-semibold text-black">mixed precision</h3>
 
-        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-          <li>
-            <strong>BF16</strong> (A100, H100, compute capability {">"}= 8):
-            wider exponent range, no GradScaler needed
-          </li>
-          <li>
-            <strong>FP16</strong> (older GPUs): narrower range, must use
-            GradScaler to prevent underflow/overflow
-          </li>
-        </ul>
-
         <CodeBlock>
           <code className="text-sm text-black">
-            {`# BF16 — simpler, preferred on modern GPUs
+            {`# BF16 (A100/H200) — no GradScaler needed
 with torch.amp.autocast("cuda", dtype=torch.bfloat16):
-    output = model(input)
-    loss = loss_fn(output, target)
+    loss = loss_fn(model(input), target)
 loss.backward()
 optimizer.step()
 
-# FP16 — needs GradScaler
+# FP16 (older GPUs) — needs GradScaler
 scaler = torch.amp.GradScaler("cuda")
 with torch.amp.autocast("cuda", dtype=torch.float16):
-    output = model(input)
-    loss = loss_fn(output, target)
+    loss = loss_fn(model(input), target)
 scaler.scale(loss).backward()
-scaler.step(optimizer)   # skips step if NaN detected
+scaler.step(optimizer)
 scaler.update()`}
           </code>
         </CodeBlock>
-
-        <Tip>
-          GradScaler automatically detects NaN/Inf gradients, skips the
-          optimizer step, and decreases the scale factor. you don&apos;t need to
-          check manually.
-        </Tip>
       </section>
 
       {/* ── Checkpointing ────────────────────────────────────────── */}
@@ -415,94 +381,48 @@ scaler.update()`}
         id="checkpointing"
         className="border border-gray-200 p-4 sm:p-6 space-y-4"
       >
-        <h3 className="text-lg font-semibold text-black">
-          checkpointing &amp; resume
-        </h3>
+        <h3 className="text-lg font-semibold text-black">checkpointing</h3>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            full checkpoint (model + optimizer + RNG)
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`# save
+        <CodeBlock>
+          <code className="text-sm text-black">
+            {`# save (rank 0 only)
 checkpoint = {
-    'model': model.module.state_dict(),   # unwrap DDP/FSDP
+    'model': model.module.state_dict(),
     'optimizer': optimizer.state_dict(),
     'epoch': epoch,
     'rng_cpu': torch.random.get_rng_state(),
     'rng_cuda': torch.cuda.get_rng_state(device),
-    'loss_history': losses,
 }
-if rank == 0:
-    torch.save(checkpoint, path)
-dist.barrier()`}
-            </code>
-          </CodeBlock>
-        </div>
+if rank == 0: torch.save(checkpoint, path)
+dist.barrier()
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            loading — watch the footguns
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`# MUST use map_location='cpu' and weights_only=False
-ckpt = torch.load(path, map_location='cpu', weights_only=False)
-model.load_state_dict(ckpt['model'])
-optimizer.load_state_dict(ckpt['optimizer'])
+# load — MUST use map_location='cpu' and weights_only=False
+ckpt = torch.load(path, map_location='cpu', weights_only=False)`}
+          </code>
+        </CodeBlock>
 
-# RNG states need CPU ByteTensor
-torch.random.set_rng_state(ckpt['rng_cpu'].cpu().to(torch.uint8))
-torch.cuda.set_rng_state(ckpt['rng_cuda'].cpu().to(torch.uint8), device)`}
-            </code>
-          </CodeBlock>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">footguns</p>
-          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-            <li>
-              <code className="text-xs bg-gray-100 px-1">
-                weights_only=True
-              </code>{" "}
-              fails on optimizer states, RNG states, custom objects — use{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                weights_only=False
-              </code>
-            </li>
-            <li>
-              <code className="text-xs bg-gray-100 px-1">
-                map_location=&apos;cuda:0&apos;
-              </code>{" "}
-              breaks RNG restore — use{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                map_location=&apos;cpu&apos;
-              </code>
-            </li>
-            <li>
-              always save{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                model.module.state_dict()
-              </code>{" "}
-              (unwrapped), not{" "}
-              <code className="text-xs bg-gray-100 px-1">
-                model.state_dict()
-              </code>{" "}
-              (DDP-wrapped)
-            </li>
-            <li>
-              not saving optimizer state means Adam &quot;forgets&quot; momentum
-              buffers after resume
-            </li>
-          </ul>
-        </div>
-
-        <Tip>
-          verified: 5+5 epoch resume produces identical loss to 10 straight
-          epochs (0.00% difference). RNG state resume produces bit-identical
-          random tensors.
-        </Tip>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+          <li>
+            <code className="text-xs bg-gray-100 px-1">weights_only=True</code>{" "}
+            fails on optimizer/RNG states
+          </li>
+          <li>
+            <code className="text-xs bg-gray-100 px-1">
+              map_location=&apos;cuda:0&apos;
+            </code>{" "}
+            breaks RNG restore
+          </li>
+          <li>
+            always save{" "}
+            <code className="text-xs bg-gray-100 px-1">
+              model.module.state_dict()
+            </code>{" "}
+            (unwrapped)
+          </li>
+          <li>
+            skipping optimizer state means Adam forgets momentum after resume
+          </li>
+        </ul>
       </section>
 
       {/* ── RLHF ────────────────────────────────────────────────── */}
@@ -512,96 +432,23 @@ torch.cuda.set_rng_state(ckpt['rng_cuda'].cpu().to(torch.uint8), device)`}
       >
         <h3 className="text-lg font-semibold text-black">RLHF &amp; GRPO</h3>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            GRPO (Group Relative Policy Optimization)
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`# generate G completions per prompt, normalize rewards within group
-for prompt in prompts:
-    completions = generate(model, prompt, num_samples=G)
-    rewards = reward_fn(completions)
-    advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+        <CodeBlock>
+          <code className="text-sm text-black">
+            {`# GRPO: generate G completions, normalize rewards within group
+advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+loss = -(log_probs * advantages).mean() + kl_coef * kl`}
+          </code>
+        </CodeBlock>
 
-    # policy gradient with KL penalty
-    log_probs = get_log_probs(model, completions)
-    ref_log_probs = get_log_probs(ref_model, completions)  # frozen
-    kl = (log_probs - ref_log_probs).mean()
-    loss = -(log_probs * advantages).mean() + kl_coef * kl`}
-            </code>
-          </CodeBlock>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            critical footguns
-          </p>
-          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-            <li>
-              reference model must be frozen:{" "}
-              <code className="text-xs bg-gray-100 px-1">ref_model.eval()</code>{" "}
-              + never pass through optimizer
-            </li>
-            <li>
-              advantages must be normalized within group (mean=0, std approx 1)
-            </li>
-            <li>KL divergence is always non-negative</li>
-            <li>
-              multi-GPU: rewards and advantages must be synced across ranks
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            TRL (Hugging Face)
-          </p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`from trl import GRPOTrainer, GRPOConfig
-
-config = GRPOConfig(
-    output_dir="output",
-    per_device_train_batch_size=4,
-    num_generations=4,            # G in GRPO
-    bf16=True,                    # use bf16 on A100
-    fsdp="full_shard",            # for multi-GPU
-    fsdp_config={"min_num_params": 1_000_000},
-)`}
-            </code>
-          </CodeBlock>
-        </div>
-
-        <div>
-          <p className="text-sm font-medium text-black mb-2">
-            OpenRLHF + Ray + vLLM
-          </p>
-          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
-            <li>
-              uses Ray for actor/critic/reward model distribution, vLLM for fast
-              generation
-            </li>
-            <li>need Gloo backend for CPU-based reward aggregation</li>
-            <li>
-              memory: actor + critic + reward model + ref model = 4x model size
-              minimum
-            </li>
-            <li>vLLM: tensor_parallel_size must divide GPUs per node evenly</li>
-            <li>
-              Ray workers OOM with default Slurm memory — use 16GB minimum per
-              CPU
-            </li>
-          </ul>
-          <CodeBlock className="mt-2">
-            <code className="text-sm text-black">
-              {`from vllm import LLM, SamplingParams
-
-# vLLM manages its own GPU memory — don't mix with manual CUDA allocation
-llm = LLM(model="meta-llama/Llama-2-7b", tensor_parallel_size=2)`}
-            </code>
-          </CodeBlock>
-        </div>
+        <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+          <li>
+            reference model must be frozen:{" "}
+            <code className="text-xs bg-gray-100 px-1">ref_model.eval()</code>
+          </li>
+          <li>multi-GPU: sync rewards and advantages across ranks</li>
+          <li>OpenRLHF needs Gloo for CPU reward aggregation</li>
+          <li>memory: 4x model size minimum (actor + critic + reward + ref)</li>
+        </ul>
       </section>
 
       {/* ── Debugging ────────────────────────────────────────────── */}
@@ -609,89 +456,83 @@ llm = LLM(model="meta-llama/Llama-2-7b", tensor_parallel_size=2)`}
         id="debugging"
         className="border border-gray-200 p-4 sm:p-6 space-y-4"
       >
-        <h3 className="text-lg font-semibold text-black">
-          debugging distributed training
-        </h3>
+        <h3 className="text-lg font-semibold text-black">debugging</h3>
 
         <div>
           <p className="text-sm font-medium text-black mb-2">hangs</p>
-          <ul className="text-sm text-gray-600 list-decimal pl-5 space-y-1">
+          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+            <li>mismatched collectives across ranks → deadlock</li>
             <li>
-              <strong>mismatched collectives</strong>: one rank calls
-              all_reduce, another doesn&apos;t — deadlock
-            </li>
-            <li>
-              <strong>barrier without all ranks</strong>: missing dist.barrier()
+              missing{" "}
+              <code className="text-xs bg-gray-100 px-1">dist.barrier()</code>{" "}
               on some ranks
             </li>
             <li>
-              <strong>NCCL timeout</strong>: increase with NCCL_TIMEOUT=1800 or
-              in init_process_group
+              NCCL timeout — increase with{" "}
+              <code className="text-xs bg-gray-100 px-1">
+                NCCL_TIMEOUT=1800
+              </code>
             </li>
-            <li>
-              <strong>data loader length mismatch</strong>: different dataset
-              sizes per rank — one rank finishes early
-            </li>
+            <li>data loader length mismatch — one rank finishes early</li>
           </ul>
         </div>
 
         <div>
           <p className="text-sm font-medium text-black mb-2">OOM</p>
-          <ul className="text-sm text-gray-600 list-decimal pl-5 space-y-1">
-            <li>
-              <strong>gradient accumulation</strong>: reduce micro-batch size,
-              accumulate gradients
-            </li>
-            <li>
-              <strong>mixed precision</strong>: bf16/fp16 halves activation
-              memory
-            </li>
-            <li>
-              <strong>activation checkpointing</strong>: trades compute for
-              memory
-            </li>
-            <li>
-              <strong>FSDP FULL_SHARD</strong>: shards everything across ranks
-              (63% savings verified)
-            </li>
-            <li>
-              <strong>CPU offload</strong>: last resort, 10-30x slower
-            </li>
+          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+            <li>gradient accumulation → smaller micro-batch</li>
+            <li>mixed precision → halves activation memory</li>
+            <li>activation checkpointing → trades compute for memory</li>
+            <li>FSDP FULL_SHARD → 63% memory savings</li>
           </ul>
         </div>
+      </section>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">wrong gradients</p>
-          <ul className="text-sm text-gray-600 list-decimal pl-5 space-y-1">
-            <li>
-              <strong>DDP module bypass</strong>: calling .module.forward()
-              directly — no gradient sync
-            </li>
-            <li>
-              <strong>forgetting model.train()</strong>: BatchNorm uses running
-              stats, Dropout disabled
-            </li>
-            <li>
-              <strong>gradient accumulation without scaling</strong>: divide
-              loss by accumulation steps
-            </li>
-            <li>
-              <strong>GradScaler skipping steps silently</strong>: check
-              scaler.get_scale() changes
-            </li>
-          </ul>
-        </div>
+      {/* ── Troubleshooting ──────────────────────────────────────── */}
+      <section
+        id="troubleshooting"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">troubleshooting</h3>
 
-        <div>
-          <p className="text-sm font-medium text-black mb-2">reproducibility</p>
-          <CodeBlock>
-            <code className="text-sm text-black">
-              {`torch.manual_seed(42)
-torch.cuda.manual_seed_all(42)
-torch.backends.cudnn.deterministic = True   # slower but reproducible
-torch.backends.cudnn.benchmark = False`}
-            </code>
-          </CodeBlock>
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium text-black">
+              job stuck in PENDING
+            </p>
+            <p className="text-sm text-gray-600">
+              check <code className="text-orange-accent">rv status</code>, try a
+              different GPU type, use{" "}
+              <code className="text-orange-accent">--mig</code> for instant free
+              allocation, or reduce{" "}
+              <code className="text-orange-accent">--time</code> below 3h for
+              backfill.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-black">no output files</p>
+            <p className="text-sm text-gray-600">
+              check <code className="text-orange-accent">rv logs --err</code>{" "}
+              for errors. write to{" "}
+              <code className="text-orange-accent">/scratch/</code> not{" "}
+              <code className="text-orange-accent">/tmp/</code> (node-local).
+              the job CWD is the snapshot, not your live code.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-black">
+              can&apos;t find results
+            </p>
+            <CodeBlock>
+              <code className="text-sm text-black">
+                {`rv exec "ls /scratch/USER/.rv/logs/"       # log files
+rv exec "ls /scratch/USER/rv-workspaces/"  # synced code
+rv sync pull /remote/path ./local/         # download`}
+              </code>
+            </CodeBlock>
+          </div>
         </div>
       </section>
     </div>

@@ -3,6 +3,19 @@ import type { Job } from "@rivanna/shared";
 import type { StrategyRecord } from "@/core/request-store.ts";
 import { theme } from "./theme.ts";
 
+/** Format seconds into a human-readable duration like "2m 30s", "1h 5m", "2d 3h". */
+export function formatHumanTime(seconds: number): string {
+  if (seconds <= 0) return "0s";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (d > 0) return h > 0 ? `${d}d ${h}h` : `${d}d`;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  if (m > 0) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  return `${s}s`;
+}
+
 /** Color a job state string consistently across all commands. */
 export function stateColor(state: string): (s: string) => string {
   if (state === "RUNNING" || state === "CONFIGURING" || state === "COMPLETING")
@@ -104,8 +117,8 @@ export function formatOrphanJobRow(job: Job): string[] {
     gpus,
     node + etaStr,
     stateColor(job.state)(job.state),
-    job.timeElapsed,
-    job.timeLimit,
+    formatHumanTime(job.timeElapsedSeconds),
+    formatHumanTime(job.timeLimitSeconds),
   ];
 }
 
