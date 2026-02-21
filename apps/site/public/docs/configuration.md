@@ -120,14 +120,45 @@ the shared directory is created with group-writable setgid permissions (chmod g+
 
 rv organizes remote files under your scratch directory:
 
-| path                              | purpose                                            |
-| --------------------------------- | -------------------------------------------------- |
-| /scratch/user/.rv/                | rv home directory                                  |
-| /scratch/user/.rv/logs/           | job output logs                                    |
-| /scratch/user/.rv/env/            | environment variable files                         |
-| /scratch/user/.rv/venv/           | persistent Python venv (torch + ray pre-installed) |
-| /scratch/user/rv-workspaces/      | synced project workspaces                          |
-| /scratch/user/.cache/huggingface/ | HuggingFace model cache (HF_HOME)                  |
-| /scratch/user/.cache/uv/          | uv package cache                                   |
+| path                                            | purpose                                |
+| ----------------------------------------------- | -------------------------------------- |
+| /scratch/user/.rv/                              | rv home directory                      |
+| /scratch/user/.rv/logs/                         | job output logs                        |
+| /scratch/user/.rv/env/                          | environment variable files             |
+| /scratch/user/.rv/envs/{project}/{branch}/      | per-project, per-branch Python venv    |
+| /scratch/user/rv-workspaces/{project}/{branch}/ | per-project, per-branch workspace root |
+| .../code/                                       | mutable workspace (sync target)        |
+| .../snapshots/{jobName}-{timestamp}/            | per-job immutable snapshot             |
+| /scratch/user/.cache/huggingface/               | HuggingFace model cache (HF_HOME)      |
+| /scratch/user/.cache/uv/                        | uv package cache                       |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
+
+## workspace isolation
+
+rv workspaces are **git-aware**. when you run `rv run` or `rv sync push` from a git repository, rv automatically detects your current branch and organizes remote files by project and branch:
+
+```
+/scratch/user/rv-workspaces/myproject/main/code/         ← branch "main"
+/scratch/user/rv-workspaces/myproject/feature--foo/code/  ← branch "feature/foo"
+```
+
+this means switching branches and running `rv run` won't overwrite code from a different branch.
+
+### snapshots
+
+each `rv run` job gets its own **immutable snapshot** of the code directory. snapshots are created using hardlinks (`cp -al`), making them instant and zero-cost until files change. this prevents a subsequent `rv run` or `rv sync push` from corrupting a running job's files.
+
+snapshots older than 7 days are automatically pruned.
+
+### sync behavior
+
+when syncing from a git repo, rv only transfers **git-tracked files** (staged, committed, and untracked non-ignored files via `git ls-files`). this is faster than rsync filtering and ensures only relevant files are synced. if git is not available, rv falls back to `.gitignore` and `.rvignore` filtering.
+
+### non-git projects
+
+projects without a `.git` directory use `_default` as the branch name. snapshots and venvs still work the same way.
+
+### branch name sanitization
+
+branch names are sanitized for filesystem safety: `/` becomes `--`, unsafe characters are stripped, and names are truncated to 80 characters. for example, `feature/my-test` becomes `feature--my-test`. detached HEAD states use `detached-{commitHash}`.

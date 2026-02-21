@@ -5,10 +5,19 @@ import type {
   NodeState,
   GPUType,
   GPUAvailabilitySummary,
+  Job,
 } from "@rivanna/shared";
 import { GPU_SPECS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
+import { renderTable } from "@/lib/table.ts";
+import {
+  stateColor,
+  buildStrategyIndex,
+  renderStrategySubLines,
+  formatOrphanJobRow,
+  ORPHAN_JOB_HEADERS,
+} from "@/lib/format-jobs.ts";
 import { SQUEUE_FORMAT, SINFO_FORMAT } from "@/lib/constants.ts";
 import { parseSqueue } from "@/parsers/squeue.ts";
 import { parseSinfo } from "@/parsers/sinfo.ts";
@@ -19,7 +28,6 @@ import {
   loadRequests,
   buildJobIndex,
   type RequestRecord,
-  type StrategyRecord,
 } from "@/core/request-store.ts";
 import { VPNError, SSHConnectionError, SSHTimeoutError } from "@/lib/errors.ts";
 
@@ -105,47 +113,9 @@ function summarizeGPUAvailability(
   return summaries.sort((a, b) => a.suPerGPUHour - b.suPerGPUHour);
 }
 
-/** Format a start time as relative "starts in Xh Ym" */
-function formatStartEta(startTime: string | undefined): string {
-  if (!startTime) return "";
-  const start = new Date(startTime);
-  const now = new Date();
-  const diffMs = start.getTime() - now.getTime();
-  if (diffMs <= 0 || isNaN(diffMs)) return "";
-
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 2) return "starting soon";
-  if (diffMin < 60) return `starts in ${diffMin}m`;
-  const hours = Math.floor(diffMin / 60);
-  const mins = diffMin % 60;
-  if (hours < 24) {
-    return mins > 0 ? `starts in ${hours}h ${mins}m` : `starts in ${hours}h`;
-  }
-  const days = Math.floor(hours / 24);
-  const remHours = hours % 24;
-  return remHours > 0
-    ? `starts in ${days}d ${remHours}h`
-    : `starts in ${days}d`;
-}
-
-/** Format a GPU topology label from a strategy record */
-function formatTopology(strat: StrategyRecord): string {
-  const gpu = strat.gpuType.replace(/_\d+$/, "").toUpperCase();
-  if (strat.nodes > 1) {
-    return `${gpu}:${strat.gpusPerNode}×${strat.nodes}`;
-  }
-  return `${gpu}:${strat.gpusPerNode * strat.nodes}`;
-}
-
 /** Render a grouped request: parent line + strategy sub-lines (compact for status). */
-function renderStatusRequestGroup(
-  request: RequestRecord,
-  jobs: import("@rivanna/shared").Job[],
-): void {
-  const stratIndex = new Map<string, StrategyRecord>();
-  for (const s of request.strategies) {
-    stratIndex.set(s.jobId, s);
-  }
+function renderStatusRequestGroup(request: RequestRecord, jobs: Job[]): void {
+  const stratIndex = buildStrategyIndex(request.strategies);
 
   const activeJob = jobs.find(
     (j) =>
@@ -155,41 +125,17 @@ function renderStatusRequestGroup(
   );
   const aggregateState = activeJob ? activeJob.state : jobs[0]!.state;
   const representative = activeJob ?? jobs[0]!;
-
-  const stateColor =
-    aggregateState === "RUNNING" ||
-    aggregateState === "CONFIGURING" ||
-    aggregateState === "COMPLETING"
-      ? chalk.green
-      : aggregateState === "PENDING"
-        ? chalk.yellow
-        : chalk.red;
+  const colorFn = stateColor(aggregateState);
 
   // Compact parent line for status dashboard
   const name = request.jobName.slice(0, 20).padEnd(21);
-  const stateStr = stateColor(aggregateState.padEnd(10));
+  const stateStr = colorFn(aggregateState.padEnd(10));
   const timeStr = `${representative.timeElapsed}/${representative.timeLimit}`;
 
   console.log(`  ${name}${stateStr}${timeStr}`);
 
   // Sub-lines: strategy details
-  for (const job of jobs) {
-    const strat = stratIndex.get(job.id);
-    const topo = strat
-      ? formatTopology(strat)
-      : job.gres.replace(/^gres\/gpu:/, "");
-    const node =
-      job.nodes.length > 0
-        ? job.nodes.join(",")
-        : job.reason
-          ? `(${job.reason})`
-          : "";
-    const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
-    const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
-    console.log(
-      theme.muted(`    ${job.id}  ${topo.padEnd(12)}${node}`) + etaStr,
-    );
-  }
+  renderStrategySubLines(jobs, stratIndex);
 }
 
 async function runStatus(options: StatusOptions) {
@@ -306,19 +252,30 @@ async function runStatus(options: StatusOptions) {
   // Storage
   if (storage.length > 0) {
     console.log(theme.info("\nStorage"));
-    for (const s of storage) {
+
+    const storageRows = storage.map((s) => {
       const usedGB = Math.round(s.usedBytes / 1e9);
       const totalGB = Math.round(s.totalBytes / 1e9);
       const unit = totalGB >= 1000 ? "TB" : "GB";
-      const usedDisp = unit === "TB" ? (usedGB / 1000).toFixed(1) : usedGB;
-      const totalDisp = unit === "TB" ? (totalGB / 1000).toFixed(0) : totalGB;
+      const usedDisp =
+        unit === "TB" ? (usedGB / 1000).toFixed(1) : String(usedGB);
+      const totalDisp =
+        unit === "TB" ? (totalGB / 1000).toFixed(0) : String(totalGB);
       const pct = s.usedPercent;
       const color =
         pct > 80 ? chalk.red : pct > 60 ? chalk.yellow : chalk.green;
-      console.log(
-        `  ${s.type.padEnd(12)} ${s.mountPoint.padEnd(28)} ${String(usedDisp).padStart(6)}/${totalDisp} ${unit}  ${color(`${pct}%`)}`,
-      );
-    }
+      return [
+        s.type,
+        s.mountPoint,
+        `${usedDisp}/${totalDisp} ${unit}`,
+        color(`${pct}%`),
+      ];
+    });
+
+    renderTable({
+      headers: ["Type", "Mount", "Usage", "Used"],
+      rows: storageRows,
+    });
   }
 
   // Active jobs — grouped by request (same format as `rv ps`)
@@ -329,11 +286,8 @@ async function runStatus(options: StatusOptions) {
     const jobIndex = buildJobIndex(requests);
 
     // Bucket jobs by request ID
-    const grouped = new Map<
-      string,
-      { request: RequestRecord; jobs: import("@rivanna/shared").Job[] }
-    >();
-    const orphans: import("@rivanna/shared").Job[] = [];
+    const grouped = new Map<string, { request: RequestRecord; jobs: Job[] }>();
+    const orphans: Job[] = [];
 
     for (const job of jobs) {
       const req = jobIndex.get(job.id);
@@ -353,26 +307,12 @@ async function runStatus(options: StatusOptions) {
       renderStatusRequestGroup(request, reqJobs);
     }
 
-    // Orphan jobs in flat format
-    for (const job of orphans) {
-      const stateColor =
-        job.state === "RUNNING"
-          ? chalk.green
-          : job.state === "PENDING"
-            ? chalk.yellow
-            : chalk.red;
-      const gpus = job.gres.replace(/^gres\/gpu:/, "");
-      const node =
-        job.nodes.length > 0
-          ? job.nodes.join(",")
-          : job.reason
-            ? `(${job.reason})`
-            : "";
-      const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
-      const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
-      console.log(
-        `  ${job.id.padEnd(12)}${job.name.padEnd(20).slice(0, 19).padEnd(20)}${gpus.padEnd(14)}${node.padEnd(16)}${stateColor(job.state.padEnd(10))}${job.timeElapsed}/${job.timeLimit}${etaStr}`,
-      );
+    // Orphan jobs via shared table
+    if (orphans.length > 0) {
+      renderTable({
+        headers: ORPHAN_JOB_HEADERS,
+        rows: orphans.map(formatOrphanJobRow),
+      });
     }
   } else {
     console.log(theme.muted("\nNo active jobs."));
@@ -383,7 +323,7 @@ async function runStatus(options: StatusOptions) {
     console.log(theme.info("\nPort Forwards"));
     for (const fwd of forwards) {
       console.log(
-        `  localhost:${fwd.localPort} ${theme.muted("→")} ${fwd.node}:${fwd.remotePort} ${theme.muted(`(job ${fwd.jobId}, PID ${fwd.pid})`)}`,
+        `  localhost:${fwd.localPort} ${theme.muted("\u2192")} ${fwd.node}:${fwd.remotePort} ${theme.muted(`(job ${fwd.jobId}, PID ${fwd.pid})`)}`,
       );
     }
   }
@@ -391,12 +331,8 @@ async function runStatus(options: StatusOptions) {
   // GPU availability
   if (gpuSummary.length > 0) {
     console.log(theme.info("\nGPU Availability"));
-    console.log(
-      theme.muted(
-        `  ${"Type".padEnd(12)}${"Total".padEnd(10)}${"Avail".padEnd(10)}${"Used".padEnd(8)}SU/hr`,
-      ),
-    );
-    for (const g of gpuSummary) {
+
+    const gpuRows = gpuSummary.map((g) => {
       const label = g.gpuType === "mig" ? "MIG" : g.gpuType.toUpperCase();
       const unit = g.gpuType === "mig" ? "slices" : "GPUs";
       const suStr = g.suPerGPUHour === 0 ? "FREE" : g.suPerGPUHour.toFixed(0);
@@ -406,10 +342,19 @@ async function runStatus(options: StatusOptions) {
           : g.utilizationPercent > 70
             ? chalk.yellow
             : chalk.green;
-      console.log(
-        `  ${label.padEnd(12)}${`${g.totalGPUs} ${unit}`.padEnd(10)}${String(g.availableGPUs).padEnd(10)}${pctColor(`${g.utilizationPercent}%`.padEnd(8))}${suStr}`,
-      );
-    }
+      return [
+        label,
+        `${g.totalGPUs} ${unit}`,
+        String(g.availableGPUs),
+        pctColor(`${g.utilizationPercent}%`),
+        suStr,
+      ];
+    });
+
+    renderTable({
+      headers: ["Type", "Total", "Avail", "Used", "SU/hr"],
+      rows: gpuRows,
+    });
   }
 
   console.log();

@@ -83,12 +83,29 @@ async function runRun(commandParts: string[], options: RunOptions) {
 
   const time = parseTime(options.time);
 
-  // Smart execution: detect local file → sync → deps → rewrite
+  // Generate job name first (only needs raw command string)
+  const rawCommand =
+    commandParts.length === 1 ? commandParts[0]! : shellJoin(commandParts);
+  let jobName = options.name;
+  if (!jobName) {
+    jobName = generateJobName(rawCommand);
+    if (config.defaults.ai_naming && config.defaults.ai_api_key) {
+      const apiKey = config.defaults.ai_api_key;
+      const provider = apiKey.startsWith("sk-ant-")
+        ? ("anthropic" as const)
+        : ("openai" as const);
+      const aiName = await generateAIJobName(rawCommand, apiKey, provider);
+      if (aiName) jobName = `rv-${aiName}`;
+    }
+  }
+
+  // Smart execution: detect local file → sync → deps → snapshot → rewrite
   const prepSpinner = isJson ? null : ora("Preparing...").start();
   const execution = await prepareExecution(
     commandParts,
     config.connection.user,
     ssh,
+    jobName,
     prepSpinner ?? undefined,
   );
   prepSpinner?.stop();
@@ -101,25 +118,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     }
   }
 
-  const command = execution
-    ? execution.command
-    : commandParts.length === 1
-      ? commandParts[0]!
-      : shellJoin(commandParts);
-
-  // Smart job naming
-  let jobName = options.name;
-  if (!jobName) {
-    jobName = generateJobName(command);
-    if (config.defaults.ai_naming && config.defaults.ai_api_key) {
-      const apiKey = config.defaults.ai_api_key;
-      const provider = apiKey.startsWith("sk-ant-")
-        ? ("anthropic" as const)
-        : ("openai" as const);
-      const aiName = await generateAIJobName(command, apiKey, provider);
-      if (aiName) jobName = `rv-${aiName}`;
-    }
-  }
+  const command = execution ? execution.command : rawCommand;
 
   const request: UserRequest = {
     gpuCount,
@@ -182,6 +181,14 @@ async function runRun(commandParts: string[], options: RunOptions) {
         topology: s.strategy.topology,
       })),
       createdAt: new Date().toISOString(),
+      ...(execution?.git && {
+        git: {
+          branch: execution.git.branch,
+          commitHash: execution.git.commitHash,
+          dirty: execution.git.dirty,
+        },
+      }),
+      ...(execution?.workDir && { snapshotPath: execution.workDir }),
     });
 
     const monitorSpinner = isJson
@@ -268,14 +275,25 @@ async function runRun(commandParts: string[], options: RunOptions) {
     if (!isJson) {
       const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
       console.log(theme.muted("\n  Files on Rivanna:"));
+      if (execution?.codeDir) {
+        console.log(theme.muted(`    Workspace:    ${execution.codeDir}`));
+      }
       if (execution?.workDir) {
-        console.log(theme.muted(`    Workspace:    ${execution.workDir}`));
+        console.log(theme.muted(`    Snapshot:     ${execution.workDir}`));
       }
       console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
       console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
+      if (execution?.git) {
+        const dirty = execution.git.dirty ? "*" : "";
+        console.log(
+          theme.muted(
+            `    Git:          ${execution.git.branch}@${execution.git.commitHash}${dirty}`,
+          ),
+        );
+      }
       console.log();
-      if (execution?.workDir) {
-        console.log(theme.muted(`  rv sync pull ${execution.workDir} .`));
+      if (execution?.codeDir) {
+        console.log(theme.muted(`  rv sync pull ${execution.codeDir} .`));
       }
       console.log(theme.muted(`  rv logs --pull ${winner.jobId}`));
     }

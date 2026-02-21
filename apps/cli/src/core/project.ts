@@ -5,6 +5,7 @@ import type { SSHClient } from "./ssh.ts";
 import { PATHS } from "@rivanna/shared";
 import { shellQuote, shellJoin } from "@/lib/shell-quote.ts";
 import { DEFAULT_SYNC_EXCLUDES, DEFAULT_MODULES } from "@/lib/constants.ts";
+import { getGitInfo, getTrackedFiles, type GitInfo } from "./git.ts";
 import type { Ora } from "ora";
 
 // --------------- Types ---------------
@@ -12,18 +13,23 @@ import type { Ora } from "ora";
 interface ProjectInfo {
   name: string;
   localRoot: string;
-  remotePath: string;
+  remotePath: string; // {project}/{safeBranch}/code
+  snapshotsDir: string; // {project}/{safeBranch}/snapshots
   venvPath: string;
   entrypoint: string;
   depsFile: string | null;
   depsHash: string | null;
+  git: GitInfo | null;
+  trackedFiles: string[] | null;
 }
 
 export interface ExecutionResult {
   command: string;
-  workDir: string;
+  workDir: string; // snapshot path (immutable, what sbatch runs from)
+  codeDir: string; // mutable code/ dir (for display)
   venvPath: string | null;
   localFilePath: string | null;
+  git: GitInfo | null;
 }
 
 // --------------- Constants ---------------
@@ -39,6 +45,8 @@ const PROJECT_MARKERS = [
 ];
 
 const DEPS_FILES = ["requirements.txt", "pyproject.toml"];
+
+const SNAPSHOT_MAX_AGE_DAYS = 7;
 
 // --------------- Detection ---------------
 
@@ -95,6 +103,7 @@ function hashFile(filePath: string): string {
 
 /**
  * Build a ProjectInfo object from a detected local file.
+ * Now branch-aware: uses git info to construct per-branch paths.
  */
 function buildProjectInfo(localFilePath: string, user: string): ProjectInfo {
   const projectRoot = findProjectRoot(localFilePath);
@@ -105,14 +114,24 @@ function buildProjectInfo(localFilePath: string, user: string): ProjectInfo {
     ? hashFile(resolve(projectRoot, depsFileName))
     : null;
 
+  const git = getGitInfo(projectRoot);
+  const branchDir = git ? git.safeBranch : "_default";
+  const trackedFiles = git ? getTrackedFiles(projectRoot) : null;
+
+  const workspacesBase = PATHS.workspaces(user);
+  const envsBase = PATHS.envs(user);
+
   return {
     name: projectName,
     localRoot: projectRoot,
-    remotePath: `${PATHS.workspaces(user)}/${projectName}`,
-    venvPath: `${PATHS.envs(user)}/${projectName}`,
+    remotePath: `${workspacesBase}/${projectName}/${branchDir}/code`,
+    snapshotsDir: `${workspacesBase}/${projectName}/${branchDir}/snapshots`,
+    venvPath: `${envsBase}/${projectName}/${branchDir}`,
     entrypoint,
     depsFile: depsFileName,
     depsHash,
+    git,
+    trackedFiles,
   };
 }
 
@@ -120,17 +139,28 @@ function buildProjectInfo(localFilePath: string, user: string): ProjectInfo {
 
 /**
  * Sync the project to the remote workspace via rsync.
+ * Uses git-tracked file list when available, falls back to .gitignore filter.
  */
 async function syncProject(
   ssh: SSHClient,
   project: ProjectInfo,
 ): Promise<void> {
   await ssh.exec(`mkdir -p ${project.remotePath}`);
-  await ssh.rsync(project.localRoot + "/", project.remotePath, {
-    filters: [":- .gitignore", ":- .rvignore"],
-    exclude: DEFAULT_SYNC_EXCLUDES,
-    delete: true,
-  });
+
+  if (project.trackedFiles && project.trackedFiles.length > 0) {
+    await ssh.rsyncWithFileList(
+      project.localRoot + "/",
+      project.remotePath,
+      project.trackedFiles,
+      { exclude: DEFAULT_SYNC_EXCLUDES, delete: true },
+    );
+  } else {
+    await ssh.rsync(project.localRoot + "/", project.remotePath, {
+      filters: [":- .gitignore", ":- .rvignore"],
+      exclude: DEFAULT_SYNC_EXCLUDES,
+      delete: true,
+    });
+  }
 }
 
 /**
@@ -198,6 +228,39 @@ async function ensureVenv(
 }
 
 /**
+ * Create a hardlink snapshot of the code/ directory for a specific job.
+ * `cp -al` is instant and uses zero extra disk until files diverge.
+ */
+async function createSnapshot(
+  ssh: SSHClient,
+  project: ProjectInfo,
+  jobName: string,
+): Promise<string> {
+  const snapshotPath = `${project.snapshotsDir}/${jobName}-${Date.now()}`;
+  await ssh.exec(
+    `mkdir -p ${project.snapshotsDir} && cp -al ${project.remotePath}/ ${snapshotPath}`,
+  );
+  return snapshotPath;
+}
+
+/**
+ * Remove snapshot directories older than SNAPSHOT_MAX_AGE_DAYS.
+ * Non-fatal on error — cleanup is best-effort.
+ */
+async function pruneSnapshots(
+  ssh: SSHClient,
+  snapshotsDir: string,
+): Promise<void> {
+  try {
+    await ssh.exec(
+      `find ${snapshotsDir} -maxdepth 1 -mindepth 1 -type d -mtime +${SNAPSHOT_MAX_AGE_DAYS} -exec rm -rf {} + 2>/dev/null || true`,
+    );
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
  * Build the remote command string from an entrypoint and extra args.
  */
 function buildRemoteCommand(entrypoint: string, args: string[]): string {
@@ -213,17 +276,19 @@ function buildRemoteCommand(entrypoint: string, args: string[]): string {
 // --------------- Public Pipeline ---------------
 
 /**
- * Full smart execution pipeline: detect → sync → deps → rewrite.
+ * Full smart execution pipeline: detect → sync → deps → snapshot → rewrite.
  *
  * Scans all args for a local file (supporting launchers like torchrun,
- * accelerate, deepspeed). If found, syncs the project, ensures deps,
- * and returns a rewritten command for the Slurm script.
+ * accelerate, deepspeed). If found, syncs the project to a branch-aware
+ * code/ directory, ensures deps, creates a hardlink snapshot, and returns
+ * a rewritten command for the Slurm script.
  * Returns null if no local files are detected in any argument.
  */
 export async function prepareExecution(
   commandArgs: string[],
   user: string,
   ssh: SSHClient,
+  jobName: string,
   spinner?: Ora,
 ): Promise<ExecutionResult | null> {
   if (commandArgs.length === 0) return null;
@@ -246,7 +311,7 @@ export async function prepareExecution(
 
   const project = buildProjectInfo(localFile, user);
 
-  // Sync project
+  // Sync project to code/ directory
   if (spinner) spinner.text = `Syncing ${project.name}...`;
   await syncProject(ssh, project);
 
@@ -261,6 +326,11 @@ export async function prepareExecution(
     }
     venvPath = project.venvPath;
   }
+
+  // Prune old snapshots, then create a new one
+  if (spinner) spinner.text = "Creating snapshot...";
+  await pruneSnapshots(ssh, project.snapshotsDir);
+  const snapshotPath = await createSnapshot(ssh, project, jobName);
 
   // Rebuild command: keep prefix args (launcher + flags), replace file path
   // with relative entrypoint, keep trailing args
@@ -278,8 +348,10 @@ export async function prepareExecution(
 
   return {
     command,
-    workDir: project.remotePath,
+    workDir: snapshotPath,
+    codeDir: project.remotePath,
     venvPath,
     localFilePath: localFile,
+    git: project.git,
   };
 }

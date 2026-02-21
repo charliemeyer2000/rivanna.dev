@@ -146,7 +146,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-run"
         name="rv run"
-        description="Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to the remote workspace. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks and auto-retries on hardware errors."
+        description="Run a command on Rivanna GPUs. Allocates, syncs local files to a git-aware workspace, creates an immutable snapshot, submits the job, and streams output until completion. Each job runs from its own snapshot, so subsequent runs or syncs won't interfere. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks and auto-retries on hardware errors."
         usage="rv run python train.py"
         options={[
           {
@@ -194,7 +194,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-ps"
         name="rv ps"
-        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row."
+        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row. Displays git branch and commit hash when available."
         usage="rv ps"
         options={[
           {
@@ -301,7 +301,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-sync"
         name="rv sync"
-        description="Sync files between your machine and Rivanna using rsync. Three subcommands: push, pull, and watch."
+        description="Sync files between your machine and Rivanna using rsync. Three subcommands: push, pull, and watch. When run from a git repo without an explicit remote path, automatically targets the current branch's workspace."
         usage="rv sync push"
       >
         <div className="space-y-4 mt-3">
@@ -309,10 +309,21 @@ export default function CommandsPage() {
             <p className="text-sm font-medium text-black mb-2">sync push</p>
             <p className="text-sm text-gray-600 mb-2">
               push local files to Rivanna. defaults to current directory.
+              without a remote path, syncs to the git-aware workspace path.
             </p>
             <CodeBlock>
               <code className="text-sm text-black">
+                rv sync push
+                <span className="text-gray-400">
+                  {" "}
+                  # syncs to &#123;project&#125;/&#123;branch&#125;/code
+                </span>
+              </code>
+            </CodeBlock>
+            <CodeBlock>
+              <code className="text-sm text-black">
                 rv sync push ./src /scratch/user/project
+                <span className="text-gray-400"> # explicit remote path</span>
               </code>
             </CodeBlock>
           </div>
@@ -330,7 +341,8 @@ export default function CommandsPage() {
           <div>
             <p className="text-sm font-medium text-black mb-2">sync watch</p>
             <p className="text-sm text-gray-600 mb-2">
-              watch local directory and auto-push on changes.
+              watch local directory and auto-push on changes. uses the same
+              git-aware default path as push.
             </p>
             <CodeBlock>
               <code className="text-sm text-black">rv sync watch</code>

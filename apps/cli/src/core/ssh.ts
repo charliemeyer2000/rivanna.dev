@@ -1,4 +1,7 @@
 import type { Subprocess } from "bun";
+import { writeFileSync, unlinkSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { BATCH_DELIMITER } from "@/lib/constants.ts";
 import { SSHConnectionError, SSHTimeoutError, VPNError } from "@/lib/errors.ts";
 
@@ -161,6 +164,53 @@ export class SSHClient {
 
     if (exitCode !== 0) {
       throw new SSHConnectionError(`rsync failed with exit code ${exitCode}`);
+    }
+  }
+
+  async rsyncWithFileList(
+    localPath: string,
+    remotePath: string,
+    files: string[],
+    options?: RsyncOptions,
+  ): Promise<void> {
+    const tmpFile = join(
+      tmpdir(),
+      `rv-filelist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    writeFileSync(tmpFile, files.join("\n") + "\n");
+
+    try {
+      const args = [
+        "rsync",
+        "-avz",
+        "--progress",
+        "-e",
+        "ssh -o BatchMode=yes",
+        `--files-from=${tmpFile}`,
+      ];
+
+      if (options?.delete) args.push("--delete");
+      if (options?.dryRun) args.push("--dry-run");
+      if (options?.exclude) {
+        for (const pattern of options.exclude) {
+          args.push("--exclude", pattern);
+        }
+      }
+
+      args.push(localPath, `${this.target}:${remotePath}`);
+
+      const proc = Bun.spawn(args, {
+        stdio: ["inherit", "inherit", "inherit"],
+      });
+      const exitCode = await proc.exited;
+
+      if (exitCode !== 0) {
+        throw new SSHConnectionError(`rsync failed with exit code ${exitCode}`);
+      }
+    } finally {
+      try {
+        unlinkSync(tmpFile);
+      } catch {}
     }
   }
 

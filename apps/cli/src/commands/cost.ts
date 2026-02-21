@@ -4,6 +4,7 @@ import type { GPUType } from "@rivanna/shared";
 import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
 import { parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
+import { renderTable } from "@/lib/table.ts";
 
 interface CostOptions {
   gpu: string;
@@ -129,19 +130,19 @@ async function runCost(options: CostOptions) {
   console.log(
     theme.info(`\nEstimated cost: ${gpuCount} GPU(s) for ${time.formatted}`),
   );
-  console.log(
-    theme.muted(`  ${"Type".padEnd(12)}${"SU/GPU-hr".padEnd(14)}Total`),
-  );
 
-  for (const row of rows) {
+  const tableRows = rows.map((row) => {
     const suStr =
       row.totalSU === 0
         ? "FREE"
         : `${Math.round(row.totalSU).toLocaleString()} SUs`;
-    console.log(
-      `  ${row.gpuType.toUpperCase().padEnd(12)}${row.suPerHour.toFixed(0).padEnd(14)}${suStr}`,
-    );
-  }
+    return [row.gpuType.toUpperCase(), row.suPerHour.toFixed(0), suStr];
+  });
+
+  renderTable({
+    headers: ["Type", "SU/GPU-hr", "Total"],
+    rows: tableRows,
+  });
 
   if (balance !== undefined) {
     console.log(

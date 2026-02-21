@@ -5,6 +5,7 @@ import { PATHS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { DEFAULT_SYNC_EXCLUDES } from "@/lib/constants.ts";
+import { getGitInfo } from "@/core/git.ts";
 
 interface SyncPushOptions {
   dryRun?: boolean;
@@ -71,8 +72,11 @@ export function registerSyncCommand(program: Command) {
 }
 
 function defaultRemote(user: string, localPath: string): string {
-  const dirName = basename(resolve(localPath));
-  return `${PATHS.workspaces(user)}/${dirName}`;
+  const absPath = resolve(localPath);
+  const dirName = basename(absPath);
+  const git = getGitInfo(absPath);
+  const branch = git ? git.safeBranch : "_default";
+  return `${PATHS.workspaces(user)}/${dirName}/${branch}/code`;
 }
 
 async function runPush(

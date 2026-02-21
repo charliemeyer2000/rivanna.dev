@@ -27,7 +27,7 @@ rv up --dry-run          # preview strategies
 
 ## rv run
 
-Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to the remote workspace.
+Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to a git-aware remote workspace. each job runs from an immutable snapshot, so subsequent runs or syncs won't interfere with in-progress jobs.
 
 ```bash
 rv run python train.py
@@ -49,7 +49,7 @@ rv run torchrun --nproc_per_node=4 train.py
 
 ## rv ps
 
-List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time.
+List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. when git metadata is available, displays the branch and commit hash alongside each job group.
 
 ```bash
 rv ps
@@ -112,16 +112,16 @@ rv status
 
 ## rv sync
 
-Sync files between your machine and Rivanna using rsync. Three subcommands: push, pull, and watch.
+Sync files between your machine and Rivanna using rsync. Three subcommands: push, pull, and watch. when run from a git repo without an explicit remote path, rv automatically targets the current branch's workspace (`{project}/{branch}/code`).
 
 ### sync push
 
-Push local files to Rivanna. Defaults to current directory.
+Push local files to Rivanna. Defaults to current directory. without a remote path, syncs to the git-aware workspace path.
 
 ```bash
-rv sync push
-rv sync push ./src /scratch/user/project
-rv sync push --dry-run    # preview what would be synced
+rv sync push                                   # syncs to {project}/{branch}/code
+rv sync push ./src /scratch/user/project       # explicit remote path
+rv sync push --dry-run                         # preview what would be synced
 ```
 
 ### sync pull
@@ -135,7 +135,7 @@ rv sync pull /scratch/user/results ./data
 
 ### sync watch
 
-Watch local directory and auto-push on changes.
+Watch local directory and auto-push on changes. uses the same git-aware default path as push.
 
 ```bash
 rv sync watch

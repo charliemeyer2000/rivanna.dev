@@ -16,6 +16,8 @@ export interface RequestRecord {
   type: "run" | "up";
   strategies: StrategyRecord[];
   createdAt: string;
+  git?: { branch: string; commitHash: string; dirty: boolean };
+  snapshotPath?: string;
 }
 
 interface RequestStore {

@@ -318,18 +318,32 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
               </tr>
               <tr className="border-b border-gray-100">
                 <td className="px-3 py-2 font-mono text-xs">
-                  /scratch/user/.rv/venv/
+                  /scratch/user/.rv/envs/&#123;project&#125;/&#123;branch&#125;/
                 </td>
                 <td className="px-3 py-2 text-gray-600">
-                  persistent Python venv (torch + ray pre-installed)
+                  per-project, per-branch Python venv
                 </td>
               </tr>
               <tr className="border-b border-gray-100">
                 <td className="px-3 py-2 font-mono text-xs">
-                  /scratch/user/rv-workspaces/
+                  /scratch/user/rv-workspaces/&#123;project&#125;/&#123;branch&#125;/
                 </td>
                 <td className="px-3 py-2 text-gray-600">
-                  synced project workspaces
+                  per-project, per-branch workspace root
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs pl-8">.../code/</td>
+                <td className="px-3 py-2 text-gray-600">
+                  mutable workspace (sync target)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs pl-8">
+                  .../snapshots/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  per-job immutable snapshots
                 </td>
               </tr>
               <tr className="border-b border-gray-100">
@@ -361,6 +375,75 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
             not backed up
           </a>{" "}
           and subject to a 90-day purge policy.
+        </p>
+      </section>
+
+      <section
+        id="workspace-isolation"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">
+          workspace isolation
+        </h3>
+        <p className="text-sm text-gray-600">
+          rv workspaces are <strong>git-aware</strong>. when you run{" "}
+          <code className="text-orange-accent">rv run</code> or{" "}
+          <code className="text-orange-accent">rv sync push</code> from a git
+          repository, rv automatically detects your current branch and organizes
+          remote files by project and branch:
+        </p>
+        <CodeBlock>
+          <code className="text-sm text-black whitespace-pre">{`.../rv-workspaces/myproject/main/code/          ← branch "main"
+.../rv-workspaces/myproject/feature--foo/code/   ← branch "feature/foo"`}</code>
+        </CodeBlock>
+        <p className="text-sm text-gray-600">
+          switching branches and running{" "}
+          <code className="text-orange-accent">rv run</code> won&apos;t
+          overwrite code from a different branch.
+        </p>
+
+        <h4 className="text-sm font-semibold text-black mt-4">snapshots</h4>
+        <p className="text-sm text-gray-600">
+          each <code className="text-orange-accent">rv run</code> job gets its
+          own <strong>immutable snapshot</strong> of the code directory.
+          snapshots use hardlinks, making them instant and zero-cost until files
+          change. this prevents a subsequent run or sync from corrupting a
+          running job&apos;s files. snapshots older than 7 days are
+          automatically pruned.
+        </p>
+
+        <h4 className="text-sm font-semibold text-black mt-4">sync behavior</h4>
+        <p className="text-sm text-gray-600">
+          when syncing from a git repo, rv only transfers{" "}
+          <strong>git-tracked files</strong> (staged, committed, and untracked
+          non-ignored). this is faster than rsync filtering and ensures only
+          relevant files are synced. if git is not available, rv falls back to{" "}
+          <code className="text-orange-accent">.gitignore</code> and{" "}
+          <code className="text-orange-accent">.rvignore</code> filtering.
+        </p>
+
+        <h4 className="text-sm font-semibold text-black mt-4">
+          non-git projects
+        </h4>
+        <p className="text-sm text-gray-600">
+          projects without a <code className="text-orange-accent">.git</code>{" "}
+          directory use <code className="text-orange-accent">_default</code> as
+          the branch name. snapshots and venvs still work the same way.
+        </p>
+
+        <h4 className="text-sm font-semibold text-black mt-4">
+          branch name sanitization
+        </h4>
+        <p className="text-xs text-gray-500">
+          branch names are sanitized for filesystem safety:{" "}
+          <code className="text-orange-accent">/</code> becomes{" "}
+          <code className="text-orange-accent">--</code>, unsafe characters are
+          stripped, and names are truncated to 80 characters. detached HEAD
+          states use{" "}
+          <code className="text-orange-accent">
+            detached-&#123;commitHash&#125;
+          </code>
+          .
         </p>
       </section>
     </div>

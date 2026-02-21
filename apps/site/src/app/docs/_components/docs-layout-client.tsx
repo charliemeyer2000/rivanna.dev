@@ -62,6 +62,20 @@ const docNavItems = [
       { label: "paths", id: "paths" },
     ],
   },
+  {
+    href: "/docs/gpu-training",
+    label: "gpu training",
+    subheadings: [
+      { label: "overview", id: "overview" },
+      { label: "process groups", id: "process-groups" },
+      { label: "ddp", id: "ddp" },
+      { label: "fsdp", id: "fsdp" },
+      { label: "mixed precision", id: "mixed-precision" },
+      { label: "checkpointing", id: "checkpointing" },
+      { label: "rlhf & grpo", id: "rlhf" },
+      { label: "debugging", id: "debugging" },
+    ],
+  },
 ];
 
 export default function DocsLayoutClient({

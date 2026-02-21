@@ -4,11 +4,19 @@ import ora from "ora";
 import chalk from "chalk";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
+import { renderTable, renderInteractiveTable } from "@/lib/table.ts";
+import {
+  stateColor,
+  formatStartEta,
+  buildStrategyIndex,
+  renderStrategySubLines,
+  formatOrphanJobRow,
+  ORPHAN_JOB_HEADERS,
+} from "@/lib/format-jobs.ts";
 import {
   loadRequests,
   buildJobIndex,
   type RequestRecord,
-  type StrategyRecord,
 } from "@/core/request-store.ts";
 
 interface PsOptions {
@@ -34,66 +42,9 @@ export function registerPsCommand(program: Command) {
     });
 }
 
-/** Format a start time as relative "in Xh Ym" or "starts ~HH:MM" */
-function formatStartEta(startTime: string | undefined): string {
-  if (!startTime) return "";
-  const start = new Date(startTime);
-  const now = new Date();
-  const diffMs = start.getTime() - now.getTime();
-  if (diffMs <= 0 || isNaN(diffMs)) return "";
-
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 2) return "starting soon";
-  if (diffMin < 60) return `starts in ${diffMin}m`;
-  const hours = Math.floor(diffMin / 60);
-  const mins = diffMin % 60;
-  if (hours < 24) {
-    return mins > 0 ? `starts in ${hours}h ${mins}m` : `starts in ${hours}h`;
-  }
-  const days = Math.floor(hours / 24);
-  const remHours = hours % 24;
-  return remHours > 0
-    ? `starts in ${days}d ${remHours}h`
-    : `starts in ${days}d`;
-}
-
-/** Format a GPU topology label from a strategy record: "A100:4" or "A100:2×2" */
-function formatTopology(strat: StrategyRecord): string {
-  // Strip _80/_40 suffixes for display: "a100_80" → "A100"
-  const gpu = strat.gpuType.replace(/_\d+$/, "").toUpperCase();
-  if (strat.nodes > 1) {
-    return `${gpu}:${strat.gpusPerNode}×${strat.nodes}`;
-  }
-  return `${gpu}:${strat.gpusPerNode * strat.nodes}`;
-}
-
-/** Flat row format for orphan jobs (no request metadata). */
-function formatJobRow(job: Job): string {
-  const stateColor =
-    job.state === "RUNNING"
-      ? chalk.green
-      : job.state === "PENDING"
-        ? chalk.yellow
-        : chalk.red;
-  const gpus = job.gres.replace(/^gres\/gpu:/, "");
-  const node =
-    job.nodes.length > 0
-      ? job.nodes.join(",")
-      : job.reason
-        ? `(${job.reason})`
-        : "(pending)";
-  const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
-  const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
-  return `  ${job.id.padEnd(12)}${job.name.padEnd(18).slice(0, 17).padEnd(18)}${gpus.padEnd(16)}${node.padEnd(18)}${stateColor(job.state.padEnd(12))}${job.timeElapsed.padEnd(10)}${job.timeLimit}${etaStr}`;
-}
-
 /** Render a grouped request: parent line + strategy sub-lines. */
 function renderRequestGroup(request: RequestRecord, jobs: Job[]): void {
-  // Build strategy lookup
-  const stratIndex = new Map<string, StrategyRecord>();
-  for (const s of request.strategies) {
-    stratIndex.set(s.jobId, s);
-  }
+  const stratIndex = buildStrategyIndex(request.strategies);
 
   // Determine aggregate state from active jobs
   const activeJob = jobs.find(
@@ -104,20 +55,21 @@ function renderRequestGroup(request: RequestRecord, jobs: Job[]): void {
   );
   const aggregateState = activeJob ? activeJob.state : jobs[0]!.state;
   const representative = activeJob ?? jobs[0]!;
+  const colorFn = stateColor(aggregateState);
 
-  const stateColor =
-    aggregateState === "RUNNING" ||
-    aggregateState === "CONFIGURING" ||
-    aggregateState === "COMPLETING"
-      ? chalk.green
-      : aggregateState === "PENDING"
-        ? chalk.yellow
-        : chalk.red;
+  // Build branch tag from git metadata
+  let branchTag = "";
+  if (request.git) {
+    const dirtyMark = request.git.dirty ? "*" : "";
+    branchTag = chalk.cyan(
+      ` [${request.git.branch}@${request.git.commitHash}${dirtyMark}]`,
+    );
+  }
 
   // Build parent line: name + command + state + elapsed + limit
   const termWidth = process.stdout.columns ?? 100;
   const name = request.jobName.slice(0, 20).padEnd(21);
-  const stateStr = stateColor(aggregateState.padEnd(10));
+  const stateStr = colorFn(aggregateState.padEnd(10));
   const elapsed = representative.timeElapsed.padEnd(8);
   const limit = representative.timeLimit;
 
@@ -136,27 +88,10 @@ function renderRequestGroup(request: RequestRecord, jobs: Job[]): void {
     cmdStr = " ".repeat(maxCmdLen);
   }
 
-  console.log(`  ${name}${cmdStr}${stateStr}${elapsed}${limit}`);
+  console.log(`  ${name}${cmdStr}${stateStr}${elapsed}${limit}${branchTag}`);
 
   // Sub-lines: one per active job
-  for (const job of jobs) {
-    const strat = stratIndex.get(job.id);
-    const topo = strat
-      ? formatTopology(strat)
-      : job.gres.replace(/^gres\/gpu:/, "");
-    const node =
-      job.nodes.length > 0
-        ? job.nodes.join(",")
-        : job.reason
-          ? `(${job.reason})`
-          : "";
-    // Show estimated start time for PENDING jobs
-    const eta = job.state === "PENDING" ? formatStartEta(job.startTime) : "";
-    const etaStr = eta ? `  ${chalk.dim.cyan(eta)}` : "";
-    console.log(
-      theme.muted(`    ${job.id}  ${topo.padEnd(12)}${node}`) + etaStr,
-    );
-  }
+  renderStrategySubLines(jobs, stratIndex);
 }
 
 async function runPs(options: PsOptions) {
@@ -220,42 +155,38 @@ async function runPs(options: PsOptions) {
       renderRequestGroup(request, reqJobs);
     }
 
-    // Orphan jobs in flat format
+    // Orphan jobs in flat table format
     if (orphans.length > 0) {
       if (grouped.size > 0) {
         console.log(); // visual separator
       }
-      console.log(
-        theme.muted(
-          `  ${"ID".padEnd(12)}${"Name".padEnd(18)}${"GPUs".padEnd(16)}${"Node".padEnd(18)}${"Status".padEnd(12)}${"Elapsed".padEnd(10)}Limit`,
-        ),
-      );
-      for (const job of orphans) {
-        console.log(formatJobRow(job));
-      }
+      renderTable({
+        headers: ORPHAN_JOB_HEADERS,
+        rows: orphans.map(formatOrphanJobRow),
+      });
     }
   }
 
-  // History
+  // History — paginated when many jobs
   if (historyJobs.length > 0) {
     console.log(theme.info("\nRecent history:"));
-    console.log(
-      theme.muted(
-        `  ${"ID".padEnd(12)}${"Name".padEnd(18)}${"Partition".padEnd(16)}${"State".padEnd(14)}${"Elapsed".padEnd(12)}Exit`,
-      ),
-    );
 
-    for (const job of historyJobs.slice(0, 20)) {
-      const stateColor =
-        job.state === "COMPLETED"
-          ? chalk.green
-          : job.state.startsWith("CANCEL")
-            ? chalk.yellow
-            : chalk.red;
-      console.log(
-        `  ${job.id.padEnd(12)}${job.name.padEnd(18).slice(0, 17).padEnd(18)}${job.partition.padEnd(16)}${stateColor(job.state.padEnd(14))}${job.elapsed.padEnd(12)}${job.exitCode}`,
-      );
-    }
+    const historyRows = historyJobs.map((job) => {
+      const colorFn = stateColor(job.state);
+      return [
+        job.id,
+        job.name.slice(0, 17),
+        job.partition,
+        colorFn(job.state),
+        job.elapsed,
+        job.exitCode,
+      ];
+    });
+
+    await renderInteractiveTable({
+      headers: ["ID", "Name", "Partition", "State", "Elapsed", "Exit"],
+      rows: historyRows,
+    });
   }
 
   console.log();
