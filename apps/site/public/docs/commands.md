@@ -27,7 +27,7 @@ rv up --dry-run          # preview strategies
 
 ## rv run
 
-Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to a git-aware remote workspace. each job runs from an immutable snapshot, so subsequent runs or syncs won't interfere with in-progress jobs. multi-node jobs (4+ GPUs) produce per-node log files with `[node0]`, `[node1]` prefixes in the output stream.
+Run a command on Rivanna GPUs. Syncs local files to a git-aware workspace, creates an immutable snapshot, submits strategies across compatible GPU types, and exits. by default, returns immediately after submission — use `rv ps` to check status and `rv logs -f` to follow output. pass `-f` to wait for allocation and tail logs inline. losing strategies from fan-out are automatically cleaned up by `rv ps`.
 
 ```bash
 rv run python train.py
@@ -41,15 +41,16 @@ rv run python train.py
 | `--name <name>`     | job name                               | auto-generated |
 | `--mem <size>`      | total CPU memory                       | auto           |
 | `--mig`             | shortcut for --gpu 1 --type mig (free) | —              |
+| `-f, --follow`      | wait for allocation and tail logs      | —              |
 
 ```bash
 rv run -g 4 -t a100 python train.py
-rv run torchrun --nproc_per_node=4 train.py
+rv run -f torchrun --nproc_per_node=4 train.py   # wait + tail logs
 ```
 
 ## rv ps
 
-List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. when git metadata is available, displays the branch and commit hash alongside each job group.
+List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. when git metadata is available, displays the branch and commit hash alongside each job group. automatically cancels losing fan-out strategies when a winner starts running.
 
 ```bash
 rv ps

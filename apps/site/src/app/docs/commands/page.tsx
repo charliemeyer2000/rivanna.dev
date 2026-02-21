@@ -146,7 +146,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-run"
         name="rv run"
-        description="Run a command on Rivanna GPUs. Allocates, syncs local files to a git-aware workspace, creates an immutable snapshot, submits the job, and streams output until completion. Each job runs from its own snapshot, so subsequent runs or syncs won't interfere. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks, auto-retries on hardware errors, and produces per-node log files with [node0], [node1] prefixes."
+        description="Run a command on Rivanna GPUs. Syncs local files to a git-aware workspace, creates an immutable snapshot, submits strategies across compatible GPU types, and exits. Returns immediately after submission by default — use rv ps to check status and rv logs -f to follow output. Pass -f to wait for allocation and tail logs inline."
         usage="rv run python train.py"
         options={[
           {
@@ -174,6 +174,10 @@ export default function CommandsPage() {
             flag: "--mig",
             description: "shortcut for --gpu 1 --type mig (free)",
           },
+          {
+            flag: "-f, --follow",
+            description: "wait for allocation and tail logs",
+          },
         ]}
       >
         <div className="space-y-2 mt-3">
@@ -185,7 +189,8 @@ export default function CommandsPage() {
           </CodeBlock>
           <CodeBlock>
             <code className="text-sm text-black">
-              rv run -g 4 -t a100 torchrun --nproc_per_node=2 train.py
+              rv run -f torchrun --nproc_per_node=4 train.py
+              <span className="text-gray-400"> # wait + tail logs</span>
             </code>
           </CodeBlock>
         </div>
@@ -194,7 +199,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-ps"
         name="rv ps"
-        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row. Displays git branch and commit hash when available."
+        description="List your jobs on Rivanna. Shows job ID, name, state, GPU type, node, and elapsed time. When multiple allocation strategies are pending for the same request, they are collapsed into a single row. Displays git branch and commit hash when available. Automatically cancels losing fan-out strategies when a winner starts running."
         usage="rv ps"
         options={[
           {
