@@ -214,10 +214,12 @@ async function ensureVenv(
   );
 
   // Install deps (long timeout — large packages like vllm can be 350MB+)
+  // Note: no --only-binary flag. uv prefers wheels when available (torch, numpy, etc.)
+  // but some pure-Python packages (antlr4, sqlitedict) only ship sdists that build in <1s.
   const installCmd =
     project.depsFile === "requirements.txt"
-      ? `${uvBin} pip install --only-binary :all: -r ${depsRemotePath} --python ${project.venvPath}/bin/python`
-      : `${uvBin} pip install --only-binary :all: -e ${project.remotePath} --python ${project.venvPath}/bin/python`;
+      ? `${uvBin} pip install -r ${depsRemotePath} --python ${project.venvPath}/bin/python`
+      : `${uvBin} pip install -e ${project.remotePath} --python ${project.venvPath}/bin/python`;
 
   await ssh.exec(`${moduleLoad} && ${uvEnv} ${installCmd}`, {
     timeoutMs: 300_000,
