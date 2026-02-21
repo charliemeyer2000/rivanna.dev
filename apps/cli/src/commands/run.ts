@@ -1,6 +1,11 @@
 import type { Command } from "commander";
 import ora from "ora";
-import type { GPUType, UserRequest, StrategySubmission } from "@rivanna/shared";
+import type {
+  GPUType,
+  RvConfig,
+  UserRequest,
+  StrategySubmission,
+} from "@rivanna/shared";
 import {
   allocate,
   submitStrategies,
@@ -14,11 +19,12 @@ import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
-import { prepareExecution } from "@/core/project.ts";
+import { prepareExecution, type ExecutionResult } from "@/core/project.ts";
 import { lintForMultiNode } from "@/core/preflight.ts";
 import { analyzeForHardwareRetry } from "@/core/hardware-retry.ts";
 import { shellJoin } from "@/lib/shell-quote.ts";
 import { saveRequest } from "@/core/request-store.ts";
+import type { SlurmClient } from "@/core/slurm.ts";
 
 interface RunOptions {
   gpu: string;
@@ -28,6 +34,7 @@ interface RunOptions {
   mem?: string;
   mig?: boolean;
   json?: boolean;
+  follow?: boolean;
 }
 
 export function registerRunCommand(program: Command) {
@@ -46,6 +53,7 @@ export function registerRunCommand(program: Command) {
     )
     .option("--mig", "shortcut for --gpu 1 --type mig (free)")
     .option("--json", "output as JSON")
+    .option("-f, --follow", "wait for allocation and tail logs")
     .action(async (commandParts: string[], options: RunOptions) => {
       try {
         await runRun(commandParts, options);
@@ -136,60 +144,175 @@ async function runRun(commandParts: string[], options: RunOptions) {
     sharedHfCache: config.shared?.hf_cache,
   };
 
-  // Allocate → submit → monitor → tail, with hardware failure retry
-  let retryCount = 0;
-  for (;;) {
-    const spinner = isJson ? null : ora("Probing cluster...").start();
-    const result = await allocate(slurm, request);
-    spinner?.stop();
+  // Allocate + submit
+  const spinner = isJson ? null : ora("Probing cluster...").start();
+  const result = await allocate(slurm, request);
+  spinner?.stop();
 
-    if (result.strategies.length === 0) {
-      throw new Error("No viable strategies found.");
+  if (result.strategies.length === 0) {
+    throw new Error("No viable strategies found.");
+  }
+
+  const types = [...new Set(result.strategies.map((s) => s.gpuType))];
+  if (!isJson) {
+    console.log(
+      theme.info(
+        `Submitting ${result.strategies.length} strategies across ${types.map((t) => t.toUpperCase()).join(", ")}...`,
+      ),
+    );
+  }
+
+  const envVars = getAllEnvVars();
+  const submissions = await submitStrategies(
+    slurm,
+    result.strategies,
+    request,
+    envVars,
+  );
+
+  if (submissions.length === 0) {
+    throw new Error("All strategy submissions failed.");
+  }
+
+  saveRequest({
+    id: crypto.randomUUID(),
+    jobName: request.jobName,
+    command: request.command ?? null,
+    type: "run",
+    strategies: submissions.map((s) => ({
+      jobId: s.jobId,
+      gpuType: s.strategy.gpuType,
+      gpusPerNode: s.strategy.gpusPerNode,
+      nodes: s.strategy.nodes,
+      topology: s.strategy.topology,
+    })),
+    createdAt: new Date().toISOString(),
+    ...(execution?.git && {
+      git: {
+        branch: execution.git.branch,
+        commitHash: execution.git.commitHash,
+        dirty: execution.git.dirty,
+      },
+    }),
+    ...(execution?.workDir && { snapshotPath: execution.workDir }),
+  });
+
+  if (options.follow) {
+    await followJob(slurm, config, request, submissions, execution, isJson);
+  } else {
+    printSubmitted(submissions, execution, isJson);
+  }
+}
+
+function printSubmitted(
+  submissions: StrategySubmission[],
+  execution: ExecutionResult | null,
+  isJson: boolean,
+): void {
+  if (isJson) {
+    console.log(
+      JSON.stringify(
+        {
+          strategies: submissions.map((s) => ({
+            jobId: s.jobId,
+            gpuType: s.strategy.gpuType,
+            partition: s.strategy.partition,
+            topology: s.strategy.topology,
+            label: s.strategy.label,
+          })),
+          ...(execution?.git && { git: execution.git }),
+          ...(execution?.workDir && { snapshotPath: execution.workDir }),
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  for (const sub of submissions) {
+    console.log(theme.muted(`  ${sub.jobId}  ${sub.strategy.label}`));
+  }
+
+  if (execution?.codeDir || execution?.workDir || execution?.git) {
+    console.log(theme.muted("\n  Files on Rivanna:"));
+    if (execution.codeDir) {
+      console.log(theme.muted(`    Workspace:    ${execution.codeDir}`));
     }
-
-    const types = [...new Set(result.strategies.map((s) => s.gpuType))];
-    if (!isJson) {
+    if (execution.workDir) {
+      console.log(theme.muted(`    Snapshot:     ${execution.workDir}`));
+    }
+    if (execution.git) {
+      const dirty = execution.git.dirty ? "*" : "";
       console.log(
-        theme.info(
-          `Submitting ${result.strategies.length} strategies across ${types.map((t) => t.toUpperCase()).join(", ")}...`,
+        theme.muted(
+          `    Git:          ${execution.git.branch}@${execution.git.commitHash}${dirty}`,
         ),
       );
     }
+  }
 
-    const envVars = getAllEnvVars();
-    const submissions = await submitStrategies(
-      slurm,
-      result.strategies,
-      request,
-      envVars,
-    );
+  console.log();
+  console.log(theme.muted(`  rv ps`));
+  console.log(theme.muted(`  rv logs -f ${submissions[0]!.jobId}`));
+}
 
-    if (submissions.length === 0) {
-      throw new Error("All strategy submissions failed.");
+async function followJob(
+  slurm: SlurmClient,
+  config: RvConfig,
+  request: UserRequest,
+  initialSubmissions: StrategySubmission[],
+  execution: ExecutionResult | null,
+  isJson: boolean,
+): Promise<void> {
+  let submissions = initialSubmissions;
+  let retryCount = 0;
+
+  for (;;) {
+    // On hardware retry, re-allocate and re-submit
+    if (retryCount > 0) {
+      const spinner = isJson ? null : ora("Reprobing cluster...").start();
+      const result = await allocate(slurm, request);
+      spinner?.stop();
+
+      if (result.strategies.length === 0) {
+        throw new Error("No viable strategies on retry.");
+      }
+
+      const envVars = getAllEnvVars();
+      submissions = await submitStrategies(
+        slurm,
+        result.strategies,
+        request,
+        envVars,
+      );
+      if (submissions.length === 0) {
+        throw new Error("All retry submissions failed.");
+      }
+
+      saveRequest({
+        id: crypto.randomUUID(),
+        jobName: request.jobName,
+        command: request.command ?? null,
+        type: "run",
+        strategies: submissions.map((s) => ({
+          jobId: s.jobId,
+          gpuType: s.strategy.gpuType,
+          gpusPerNode: s.strategy.gpusPerNode,
+          nodes: s.strategy.nodes,
+          topology: s.strategy.topology,
+        })),
+        createdAt: new Date().toISOString(),
+        ...(execution?.git && {
+          git: {
+            branch: execution.git.branch,
+            commitHash: execution.git.commitHash,
+            dirty: execution.git.dirty,
+          },
+        }),
+        ...(execution?.workDir && { snapshotPath: execution.workDir }),
+      });
     }
-
-    saveRequest({
-      id: crypto.randomUUID(),
-      jobName: request.jobName,
-      command: request.command ?? null,
-      type: "run",
-      strategies: submissions.map((s) => ({
-        jobId: s.jobId,
-        gpuType: s.strategy.gpuType,
-        gpusPerNode: s.strategy.gpusPerNode,
-        nodes: s.strategy.nodes,
-        topology: s.strategy.topology,
-      })),
-      createdAt: new Date().toISOString(),
-      ...(execution?.git && {
-        git: {
-          branch: execution.git.branch,
-          commitHash: execution.git.commitHash,
-          dirty: execution.git.dirty,
-        },
-      }),
-      ...(execution?.workDir && { snapshotPath: execution.workDir }),
-    });
 
     const monitorSpinner = isJson
       ? null
@@ -257,14 +380,14 @@ async function runRun(commandParts: string[], options: RunOptions) {
           { length: nodeCount },
           (_, i) => `${logBase}.node${i}.err`,
         );
-        const results = await ssh
+        const results = await slurm.sshClient
           .execBatch(
             nodeErrPaths.map((p) => `tail -n 50 ${p} 2>/dev/null || true`),
           )
           .catch(() => [] as string[]);
         errContent = results.join("\n");
       } else {
-        errContent = await ssh
+        errContent = await slurm.sshClient
           .exec(`tail -n 100 ${errPath} 2>/dev/null || true`)
           .catch(() => "");
       }

@@ -27,7 +27,7 @@ rv up --dry-run          # preview strategies
 
 ## rv run
 
-Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to a git-aware remote workspace. each job runs from an immutable snapshot, so subsequent runs or syncs won't interfere with in-progress jobs.
+Run a command on Rivanna GPUs. Allocates, syncs local files, submits the job, and streams output until completion. Detects local files in the command and automatically syncs them to a git-aware remote workspace. each job runs from an immutable snapshot, so subsequent runs or syncs won't interfere with in-progress jobs. multi-node jobs (4+ GPUs) produce per-node log files with `[node0]`, `[node1]` prefixes in the output stream.
 
 ```bash
 rv run python train.py

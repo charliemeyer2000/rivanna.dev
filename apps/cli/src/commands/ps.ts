@@ -16,6 +16,7 @@ import {
 import {
   loadRequests,
   buildJobIndex,
+  reapLosers,
   type RequestRecord,
 } from "@/core/request-store.ts";
 
@@ -100,7 +101,13 @@ async function runPs(options: PsOptions) {
 
   const spinner = isJson ? null : ora("Fetching jobs...").start();
 
-  const jobs = await slurm.getJobs();
+  let jobs = await slurm.getJobs();
+
+  // Reap losing fan-out strategies (zero extra SSH if nothing to cancel)
+  const reaped = await reapLosers(slurm, jobs);
+  if (reaped > 0) {
+    jobs = await slurm.getJobs();
+  }
 
   let historyJobs: import("@rivanna/shared").JobAccounting[] = [];
   if (options.all) {

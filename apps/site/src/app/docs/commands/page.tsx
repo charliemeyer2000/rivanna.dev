@@ -146,7 +146,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-run"
         name="rv run"
-        description="Run a command on Rivanna GPUs. Allocates, syncs local files to a git-aware workspace, creates an immutable snapshot, submits the job, and streams output until completion. Each job runs from its own snapshot, so subsequent runs or syncs won't interfere. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks and auto-retries on hardware errors."
+        description="Run a command on Rivanna GPUs. Allocates, syncs local files to a git-aware workspace, creates an immutable snapshot, submits the job, and streams output until completion. Each job runs from its own snapshot, so subsequent runs or syncs won't interfere. Exits with the remote job's exit code on failure. For multi-node jobs (4+ GPUs), runs preflight checks, auto-retries on hardware errors, and produces per-node log files with [node0], [node1] prefixes."
         usage="rv run python train.py"
         options={[
           {

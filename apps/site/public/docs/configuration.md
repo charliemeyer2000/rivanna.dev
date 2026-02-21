@@ -120,17 +120,19 @@ the shared directory is created with group-writable setgid permissions (chmod g+
 
 rv organizes remote files under your scratch directory:
 
-| path                                            | purpose                                |
-| ----------------------------------------------- | -------------------------------------- |
-| /scratch/user/.rv/                              | rv home directory                      |
-| /scratch/user/.rv/logs/                         | job output logs                        |
-| /scratch/user/.rv/env/                          | environment variable files             |
-| /scratch/user/.rv/envs/{project}/{branch}/      | per-project, per-branch Python venv    |
-| /scratch/user/rv-workspaces/{project}/{branch}/ | per-project, per-branch workspace root |
-| .../code/                                       | mutable workspace (sync target)        |
-| .../snapshots/{jobName}-{timestamp}/            | per-job immutable snapshot             |
-| /scratch/user/.cache/huggingface/               | HuggingFace model cache (HF_HOME)      |
-| /scratch/user/.cache/uv/                        | uv package cache                       |
+| path                                                                  | purpose                                |
+| --------------------------------------------------------------------- | -------------------------------------- |
+| /scratch/user/.rv/                                                    | rv home directory                      |
+| /scratch/user/.rv/logs/                                               | job output logs                        |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                  |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)   |
+| /scratch/user/.rv/env/                                                | environment variable files             |
+| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv    |
+| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root |
+| .../code/                                                             | mutable workspace (sync target)        |
+| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot             |
+| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)      |
+| /scratch/user/.cache/uv/                                              | uv package cache                       |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
 
@@ -162,3 +164,27 @@ projects without a `.git` directory use `_default` as the branch name. snapshots
 ### branch name sanitization
 
 branch names are sanitized for filesystem safety: `/` becomes `--`, unsafe characters are stripped, and names are truncated to 80 characters. for example, `feature/my-test` becomes `feature--my-test`. detached HEAD states use `detached-{commitHash}`.
+
+## multi-node logging
+
+multi-node jobs (4+ GPUs across multiple nodes) produce **per-node log files**. each node's stdout and stderr are written to separate files:
+
+```
+/scratch/user/.rv/logs/rv-job-12345.node0.out   # node 0 stdout
+/scratch/user/.rv/logs/rv-job-12345.node0.err   # node 0 stderr
+/scratch/user/.rv/logs/rv-job-12345.node1.out   # node 1 stdout
+/scratch/user/.rv/logs/rv-job-12345.node1.err   # node 1 stderr
+```
+
+single-node jobs are unchanged — they use a single `.out`/`.err` pair as before.
+
+`rv logs` automatically detects per-node files and shows merged output with `[node0]`, `[node1]` prefixes. use `--node <index>` to filter to a specific node:
+
+```bash
+rv logs 12345              # merged view (all nodes)
+rv logs 12345 --node 0     # node 0 only
+rv logs 12345 --node 1     # node 1 only
+rv logs 12345 --err        # stderr from all nodes
+```
+
+`rv logs --pull` downloads all per-node files. `rv logs -f` streams per-node output in real time.

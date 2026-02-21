@@ -309,6 +309,22 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
                 <td className="px-3 py-2 text-gray-600">job output logs</td>
               </tr>
               <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs pl-8">
+                  .../{"{jobName}-{jobId}"}.{"{out,err}"}
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  single-node log files
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs pl-8">
+                  .../{"{jobName}-{jobId}"}.node{"{N}"}.{"{out,err}"}
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  per-node log files (multi-node jobs)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
                 <td className="px-3 py-2 font-mono text-xs">
                   /scratch/user/.rv/env/
                 </td>
@@ -444,6 +460,49 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
             detached-&#123;commitHash&#125;
           </code>
           .
+        </p>
+      </section>
+
+      <section
+        id="multi-node-logging"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">multi-node logging</h3>
+        <p className="text-sm text-gray-600">
+          multi-node jobs (4+ GPUs across multiple nodes) produce{" "}
+          <strong>per-node log files</strong>. each node&apos;s stdout and
+          stderr are written to separate files:
+        </p>
+        <CodeBlock>
+          <code className="text-sm text-black whitespace-pre">{`rv-job-12345.node0.out   # node 0 stdout
+rv-job-12345.node0.err   # node 0 stderr
+rv-job-12345.node1.out   # node 1 stdout
+rv-job-12345.node1.err   # node 1 stderr`}</code>
+        </CodeBlock>
+        <p className="text-sm text-gray-600">
+          single-node jobs are unchanged — they use a single{" "}
+          <code className="text-orange-accent">.out</code>/
+          <code className="text-orange-accent">.err</code> pair as before.
+        </p>
+        <p className="text-sm text-gray-600">
+          <code className="text-orange-accent">rv logs</code> automatically
+          detects per-node files and shows merged output with{" "}
+          <code className="text-orange-accent">[node0]</code>,{" "}
+          <code className="text-orange-accent">[node1]</code> prefixes. use{" "}
+          <code className="text-orange-accent">--node &lt;index&gt;</code> to
+          filter to a specific node:
+        </p>
+        <CodeBlock>
+          <code className="text-sm text-black whitespace-pre">{`rv logs 12345              # merged view (all nodes)
+rv logs 12345 --node 0     # node 0 only
+rv logs 12345 --node 1     # node 1 only
+rv logs 12345 --err        # stderr from all nodes`}</code>
+        </CodeBlock>
+        <p className="text-xs text-gray-500">
+          <code className="text-orange-accent">rv logs --pull</code> downloads
+          all per-node files.{" "}
+          <code className="text-orange-accent">rv logs -f</code> streams
+          per-node output in real time.
         </p>
       </section>
     </div>
