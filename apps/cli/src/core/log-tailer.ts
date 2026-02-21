@@ -38,11 +38,7 @@ export async function tailJobLogs(
           ? "stdout"
           : "stderr";
     console.log(theme.muted(`\n  Tailing ${label}...`));
-    if (stream === "both") {
-      console.log(theme.muted(`  (stderr shown in ${theme.error("red")})\n`));
-    } else {
-      console.log();
-    }
+    console.log();
   }
 
   /** Fetch and print any new lines since last check. Returns updated line counts. */
@@ -85,13 +81,7 @@ export async function tailJobLogs(
         const content = readResults[i];
         if (!content) continue;
 
-        if (readCmds[i]!.type === "err") {
-          for (const line of content.split("\n")) {
-            if (line) process.stderr.write(theme.error(line) + "\n");
-          }
-        } else {
-          process.stdout.write(content + "\n");
-        }
+        process.stdout.write(content + "\n");
       }
     }
 

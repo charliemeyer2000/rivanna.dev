@@ -180,19 +180,8 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
           JSON.stringify({ jobId: targetJobId, logPath: errPath, content }),
         );
       } else if (content) {
-        if (stream === "both") {
-          // Color stderr red when showing both
-          for (const line of content.split("\n")) {
-            if (line) console.log(theme.error(line));
-          }
-        } else {
-          console.log(content);
-        }
+        console.log(content);
       }
-    }
-
-    if (!isJson && stream === "both") {
-      console.log(theme.muted(`\n  (stderr shown in ${theme.error("red")})`));
     }
   }
 }
