@@ -139,6 +139,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     command,
     workDir: execution?.workDir,
     venvPath: execution?.venvPath ?? undefined,
+    depsFile: execution?.depsFile ?? undefined,
     mem: options.mem,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
     sharedHfCache: config.shared?.hf_cache,

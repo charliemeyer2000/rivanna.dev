@@ -76,6 +76,40 @@ export function generatePreamble(opts: TemplateOptions): string {
     lines.push(`# Activate project environment`);
     lines.push(`source "${opts.venvPath}/bin/activate"`);
     lines.push("");
+
+    // Phase 2: Install CUDA-requiring packages on compute node.
+    // If Phase 1 (login node) couldn't build some packages (e.g. flash-attn,
+    // auto-gptq), it wrote a .needs-phase2 marker. Here we re-run the full
+    // install with gcc loaded and --no-build-isolation so torch is importable
+    // at build time and CUDA kernels can compile against the actual GPU.
+    if (opts.depsFile) {
+      const uvBin = "~/.local/bin/uv";
+      const uvCacheDir = PATHS.cache.uv(opts.user);
+      const wheelsDir = `${PATHS.wheels(opts.user)}`;
+      const uvEnv = `UV_LINK_MODE=copy UV_CACHE_DIR=${uvCacheDir}`;
+      const venvPython = `${opts.venvPath}/bin/python`;
+      // Use absolute path since Phase 2 runs before cd to workDir
+      const depsPath = opts.workDir
+        ? `${opts.workDir}/${opts.depsFile}`
+        : opts.depsFile;
+
+      const phase2Cmd =
+        opts.depsFile === "requirements.txt"
+          ? `${uvBin} pip install --no-build-isolation --find-links ${wheelsDir} -r ${depsPath} --python ${venvPython}`
+          : `${uvBin} pip install --no-build-isolation --find-links ${wheelsDir} -e ${opts.workDir ?? "."} --python ${venvPython}`;
+
+      lines.push(`# Phase 2: build CUDA packages on compute node (if needed)`);
+      lines.push(`if [ -f "${opts.venvPath}/.needs-phase2" ]; then`);
+      lines.push(
+        `  echo "[rv] Phase 2: building CUDA packages on $(hostname)..."`,
+      );
+      lines.push(`  module load gcc/11.4.0 2>/dev/null || true`);
+      lines.push(
+        `  ${uvEnv} ${phase2Cmd} 2>&1 && rm -f "${opts.venvPath}/.needs-phase2" || echo "[rv] Warning: Phase 2 install had errors"`,
+      );
+      lines.push(`fi`);
+      lines.push("");
+    }
   }
 
   // Prevent CPU oversubscription: each GPU process should use limited

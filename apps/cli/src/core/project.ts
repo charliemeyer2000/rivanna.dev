@@ -30,6 +30,7 @@ export interface ExecutionResult {
   venvPath: string | null;
   localFilePath: string | null;
   git: GitInfo | null;
+  depsFile: string | null;
 }
 
 // --------------- Constants ---------------
@@ -182,7 +183,16 @@ async function isVenvCurrent(
 
 /**
  * Create or update the remote venv using uv.
- * Installs deps with --only-binary :all: for fast, reliable installs.
+ *
+ * Two-phase install strategy:
+ *   Phase 1 (here, login node): Install all deps. If the install fails
+ *     (e.g. flash-attn needs GPU/gcc for compilation), fall back to
+ *     --only-binary :all: to install everything available as wheels,
+ *     then write a `.needs-phase2` marker so the sbatch preamble can
+ *     finish the install on the compute node where GPU + gcc are available.
+ *   Phase 2 (sbatch preamble, base.ts): If `.needs-phase2` exists,
+ *     re-run the install with --no-build-isolation + gcc. uv skips
+ *     already-installed packages and only builds the missing ones.
  */
 async function ensureVenv(
   ssh: SSHClient,
@@ -195,6 +205,7 @@ async function ensureVenv(
   const moduleLoad = `module load ${DEFAULT_MODULES.join(" ")}`;
   const depsRemotePath = `${project.remotePath}/${project.depsFile}`;
   const uvCacheDir = PATHS.cache.uv(user);
+  const wheelsDir = PATHS.wheels(user);
   const uvEnv = `UV_LINK_MODE=copy UV_CACHE_DIR=${uvCacheDir}`;
 
   // Check uv availability
@@ -213,20 +224,64 @@ async function ensureVenv(
     { timeoutMs: 60_000 },
   );
 
-  // Install deps (long timeout — large packages like vllm can be 350MB+)
-  // Note: no --only-binary flag. uv prefers wheels when available (torch, numpy, etc.)
-  // but some pure-Python packages (antlr4, sqlitedict) only ship sdists that build in <1s.
+  // Build install command — check local wheel cache first via --find-links
+  const findLinks = `--find-links ${wheelsDir}`;
   const installCmd =
     project.depsFile === "requirements.txt"
-      ? `${uvBin} pip install -r ${depsRemotePath} --python ${project.venvPath}/bin/python`
-      : `${uvBin} pip install -e ${project.remotePath} --python ${project.venvPath}/bin/python`;
+      ? `${uvBin} pip install -r ${depsRemotePath} ${findLinks} --python ${project.venvPath}/bin/python`
+      : `${uvBin} pip install -e ${project.remotePath} ${findLinks} --python ${project.venvPath}/bin/python`;
 
-  await ssh.exec(`${moduleLoad} && ${uvEnv} ${installCmd}`, {
-    timeoutMs: 300_000,
-  });
+  // Phase 1: try full install on login node
+  const fullInstall = await ssh.exec(
+    `${moduleLoad} && ${uvEnv} ${installCmd} 2>&1; echo "EXIT:$?"`,
+    { timeoutMs: 300_000 },
+  );
+  const exitMatch = fullInstall.match(/EXIT:(\d+)/);
+  const exitCode = exitMatch ? parseInt(exitMatch[1]!, 10) : 1;
 
-  // Write deps hash
-  await ssh.writeFile(`${project.venvPath}/.deps-hash`, project.depsHash);
+  if (exitCode === 0) {
+    // Full install succeeded — no Phase 2 needed
+    await ssh.exec(`rm -f ${project.venvPath}/.needs-phase2`);
+    await ssh.writeFile(`${project.venvPath}/.deps-hash`, project.depsHash!);
+    return;
+  }
+
+  // Full install failed (CUDA packages, old gcc, etc.)
+  // Fallback: install packages individually, skipping those that need source builds.
+  // --only-binary :all: on the full requirements fails atomically, so we iterate
+  // over each line and let the ones with wheels succeed while CUDA-only ones fail.
+  if (project.depsFile === "requirements.txt") {
+    const perPkgFallback = [
+      `while IFS= read -r _line || [ -n "$_line" ]; do`,
+      `_line=$(echo "$_line" | sed 's/#.*//' | xargs);`,
+      `[ -z "$_line" ] && continue;`,
+      `${uvBin} pip install ${findLinks} --python ${project.venvPath}/bin/python "$_line" 2>&1 || true;`,
+      `done < ${depsRemotePath}`,
+    ].join(" ");
+    await ssh.exec(
+      `${moduleLoad} && export UV_LINK_MODE=copy UV_CACHE_DIR=${uvCacheDir} && ${perPkgFallback}`,
+      { timeoutMs: 300_000 },
+    );
+  } else {
+    // pyproject.toml — best-effort with --only-binary :all:
+    const fallbackCmd = `${uvBin} pip install --only-binary :all: -e ${project.remotePath} ${findLinks} --python ${project.venvPath}/bin/python`;
+    await ssh.exec(`${moduleLoad} && ${uvEnv} ${fallbackCmd} 2>&1 || true`, {
+      timeoutMs: 300_000,
+    });
+  }
+
+  // Pre-install standard build toolchain so Phase 2 can use --no-build-isolation.
+  // These are the universal build deps for compiled Python packages (especially
+  // CUDA extensions like flash-attn, auto-gptq, xformers). Installs from
+  // cached wheels in <1s.
+  await ssh.exec(
+    `${moduleLoad} && export UV_LINK_MODE=copy UV_CACHE_DIR=${uvCacheDir} && ${uvBin} pip install --python ${project.venvPath}/bin/python setuptools wheel ninja psutil packaging 2>&1 || true`,
+    { timeoutMs: 60_000 },
+  );
+
+  // Mark for Phase 2 on compute node
+  await ssh.writeFile(`${project.venvPath}/.needs-phase2`, "1");
+  await ssh.writeFile(`${project.venvPath}/.deps-hash`, project.depsHash!);
 }
 
 /**
@@ -355,5 +410,6 @@ export async function prepareExecution(
     venvPath,
     localFilePath: localFile,
     git: project.git,
+    depsFile: project.depsFile,
   };
 }

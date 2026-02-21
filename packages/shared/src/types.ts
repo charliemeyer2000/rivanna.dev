@@ -164,6 +164,8 @@ export interface TemplateOptions extends SbatchOptions {
   ncclDebug?: boolean;
   venvPath?: string;
   sharedHfCache?: string;
+  /** Deps file name (e.g. "requirements.txt") — needed for Phase 2 GPU-node installs */
+  depsFile?: string;
 }
 
 export interface SystemState {
@@ -203,6 +205,8 @@ export interface UserRequest {
   notifyUrl?: string;
   notifyToken?: string;
   sharedHfCache?: string;
+  /** Deps file name relative to workDir (e.g. "requirements.txt") */
+  depsFile?: string;
   /** Nodes to exclude from scheduling (set by hardware-retry) */
   excludeNodes?: string;
 }

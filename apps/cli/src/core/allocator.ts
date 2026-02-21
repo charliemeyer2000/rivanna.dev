@@ -686,6 +686,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     workDir: request.workDir,
     moduleLoads: request.moduleLoads,
     venvPath: request.venvPath,
+    depsFile: request.depsFile,
     notifyUrl: request.notifyUrl,
     notifyToken: request.notifyToken,
     sharedHfCache: request.sharedHfCache,
