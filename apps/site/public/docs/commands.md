@@ -91,15 +91,17 @@ View job output logs. Defaults to the most recent job. Automatically follows out
 rv logs
 ```
 
-| flag           | description                   | default               |
-| -------------- | ----------------------------- | --------------------- |
-| `--err`        | show stderr instead of stdout | —                     |
-| `--pull`       | download log files locally    | —                     |
-| `-f, --follow` | follow log output             | auto for running jobs |
+| flag             | description                                   | default               |
+| ---------------- | --------------------------------------------- | --------------------- |
+| `--err`          | show stderr instead of stdout                 | —                     |
+| `--pull`         | download log files locally                    | —                     |
+| `-f, --follow`   | follow log output                             | auto for running jobs |
+| `--node <index>` | show specific node's output (multi-node jobs) | —                     |
 
 ```bash
 rv logs 12345 --err     # view stderr
 rv logs --pull          # download log files
+rv logs 12345 --node 1  # view node 1 output (multi-node)
 ```
 
 ## rv status
