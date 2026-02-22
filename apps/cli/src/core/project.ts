@@ -466,17 +466,10 @@ async function prepareCwdExecution(
   if (spinner) spinner.text = `Syncing ${project.name}...`;
   await syncProject(ssh, project);
 
-  // Ensure deps
-  let venvPath: string | null = null;
-  if (project.depsFile) {
-    const current = await isVenvCurrent(ssh, project);
-    if (!current) {
-      if (spinner)
-        spinner.text = `Installing dependencies (${project.depsFile})...`;
-      await ensureVenv(ssh, project, user);
-    }
-    venvPath = project.venvPath;
-  }
+  // For CWD-based execution we skip dep installation and venv activation.
+  // The user's command is opaque (shell string, uv run, make, etc.) and
+  // likely manages its own environment. Activating rv's venv conflicts
+  // with tools like `uv sync` that expect project-local `.venv`.
 
   // Prune old snapshots, then create a new one
   if (spinner) spinner.text = "Creating snapshot...";
@@ -491,9 +484,9 @@ async function prepareCwdExecution(
     command: rawCommand,
     workDir: snapshotPath,
     codeDir: project.remotePath,
-    venvPath,
+    venvPath: null,
     localFilePath: null,
     git: project.git,
-    depsFile: project.depsFile,
+    depsFile: null,
   };
 }
