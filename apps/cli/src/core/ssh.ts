@@ -140,7 +140,13 @@ export class SSHClient {
     remotePath: string,
     options?: RsyncOptions,
   ): Promise<void> {
-    const args = ["rsync", "-avz", "--progress", "-e", "ssh -o BatchMode=yes"];
+    const args = [
+      "rsync",
+      "-avz",
+      "--progress",
+      "-e",
+      "ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
+    ];
 
     if (options?.delete) args.push("--delete");
     if (options?.dryRun) args.push("--dry-run");
@@ -219,7 +225,13 @@ export class SSHClient {
     localPath: string,
     options?: RsyncOptions,
   ): Promise<void> {
-    const args = ["rsync", "-avz", "--progress", "-e", "ssh -o BatchMode=yes"];
+    const args = [
+      "rsync",
+      "-avz",
+      "--progress",
+      "-e",
+      "ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
+    ];
 
     if (options?.delete) args.push("--delete");
     if (options?.dryRun) args.push("--dry-run");

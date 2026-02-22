@@ -364,7 +364,12 @@ export async function prepareExecution(
     }
   }
 
-  if (!localFile || fileArgIndex < 0) return null;
+  // If no file detected in args, fall back to CWD-based project detection.
+  // This handles shell-string commands like "uv sync && uv run python ..."
+  // where no individual arg resolves to a local file.
+  if (!localFile || fileArgIndex < 0) {
+    return prepareCwdExecution(commandArgs, user, ssh, jobName, spinner);
+  }
 
   const project = buildProjectInfo(localFile, user);
 
@@ -409,6 +414,85 @@ export async function prepareExecution(
     codeDir: project.remotePath,
     venvPath,
     localFilePath: localFile,
+    git: project.git,
+    depsFile: project.depsFile,
+  };
+}
+
+/**
+ * Fallback when no local file is detected in args (e.g. shell-string commands
+ * like "uv sync && uv run python scripts/compute_vector.py").
+ * If CWD is a project directory, sync it and set workDir so the job
+ * runs from the workspace — not $HOME.
+ */
+async function prepareCwdExecution(
+  commandArgs: string[],
+  user: string,
+  ssh: SSHClient,
+  jobName: string,
+  spinner?: Ora,
+): Promise<ExecutionResult | null> {
+  const cwd = process.cwd();
+
+  // Only sync if CWD looks like a project
+  const hasMarker = PROJECT_MARKERS.some((m) => existsSync(resolve(cwd, m)));
+  if (!hasMarker) return null;
+
+  const projectName = basename(cwd);
+  const depsFileName = findDepsFile(cwd);
+  const depsHash = depsFileName ? hashFile(resolve(cwd, depsFileName)) : null;
+
+  const git = getGitInfo(cwd);
+  const branchDir = git ? git.safeBranch : "_default";
+  const trackedFiles = git ? getTrackedFiles(cwd) : null;
+
+  const workspacesBase = PATHS.workspaces(user);
+  const envsBase = PATHS.envs(user);
+
+  const project: ProjectInfo = {
+    name: projectName,
+    localRoot: cwd,
+    remotePath: `${workspacesBase}/${projectName}/${branchDir}/code`,
+    snapshotsDir: `${workspacesBase}/${projectName}/${branchDir}/snapshots`,
+    venvPath: `${envsBase}/${projectName}/${branchDir}`,
+    entrypoint: "",
+    depsFile: depsFileName,
+    depsHash,
+    git,
+    trackedFiles,
+  };
+
+  // Sync project to code/ directory
+  if (spinner) spinner.text = `Syncing ${project.name}...`;
+  await syncProject(ssh, project);
+
+  // Ensure deps
+  let venvPath: string | null = null;
+  if (project.depsFile) {
+    const current = await isVenvCurrent(ssh, project);
+    if (!current) {
+      if (spinner)
+        spinner.text = `Installing dependencies (${project.depsFile})...`;
+      await ensureVenv(ssh, project, user);
+    }
+    venvPath = project.venvPath;
+  }
+
+  // Prune old snapshots, then create a new one
+  if (spinner) spinner.text = "Creating snapshot...";
+  await pruneSnapshots(ssh, project.snapshotsDir);
+  const snapshotPath = await createSnapshot(ssh, project, jobName);
+
+  // Pass through command as-is (no rewriting)
+  const rawCommand =
+    commandArgs.length === 1 ? commandArgs[0]! : shellJoin(commandArgs);
+
+  return {
+    command: rawCommand,
+    workDir: snapshotPath,
+    codeDir: project.remotePath,
+    venvPath,
+    localFilePath: null,
     git: project.git,
     depsFile: project.depsFile,
   };

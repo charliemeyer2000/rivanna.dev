@@ -5,7 +5,7 @@ import { PATHS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { DEFAULT_SYNC_EXCLUDES } from "@/lib/constants.ts";
-import { getGitInfo } from "@/core/git.ts";
+import { getGitInfo, getTrackedFiles } from "@/core/git.ts";
 
 interface SyncPushOptions {
   dryRun?: boolean;
@@ -91,11 +91,26 @@ async function runPush(
   console.log(theme.info(`\nSyncing ${localPath} → ${remotePath}`));
 
   const { ssh } = ensureSetup();
-  await ssh.rsync(localPath, remotePath, {
-    filters: [":- .gitignore", ":- .rvignore"],
-    exclude: DEFAULT_SYNC_EXCLUDES,
-    dryRun: options.dryRun,
-  });
+
+  // Use git-tracked file list when available (matches rv run behavior).
+  // Falls back to .gitignore filter-based rsync for non-git dirs.
+  const absLocal = resolve(local);
+  const git = getGitInfo(absLocal);
+  const trackedFiles = git ? getTrackedFiles(absLocal) : null;
+
+  if (trackedFiles && trackedFiles.length > 0 && !options.dryRun) {
+    await ssh.exec(`mkdir -p ${remotePath}`);
+    await ssh.rsyncWithFileList(localPath, remotePath, trackedFiles, {
+      exclude: DEFAULT_SYNC_EXCLUDES,
+      delete: true,
+    });
+  } else {
+    await ssh.rsync(localPath, remotePath, {
+      filters: [":- .gitignore", ":- .rvignore"],
+      exclude: DEFAULT_SYNC_EXCLUDES,
+      dryRun: options.dryRun,
+    });
+  }
 
   if (options.dryRun) {
     console.log(theme.muted("\n(dry run — no files were transferred)"));
