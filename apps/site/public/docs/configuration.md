@@ -92,7 +92,7 @@ rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARA
 
 Rivanna's scratch filesystem has a 90-day purge policy — files not accessed in 90 days are automatically deleted. this would destroy your venv, environment variables, and caches.
 
-rv automatically prevents this by touching all files under `/scratch/user/.rv/` and cache directories once per day (on the first rv command of the day). this runs in the background and adds no latency to your commands.
+rv automatically prevents this by touching all files under `/scratch/user/.rv/`, `/scratch/user/rv-workspaces/`, and cache directories once per day (on the first rv command of the day). this covers your venv, logs, workspaces, snapshots, and model caches. it runs in the background and adds no latency to your commands.
 
 enabled by default. to disable:
 
@@ -151,7 +151,24 @@ this means switching branches and running `rv run` won't overwrite code from a d
 
 each `rv run` job gets its own **immutable snapshot** of the code directory. snapshots are created using hardlinks (`cp -al`), making them instant and zero-cost until files change. this prevents a subsequent `rv run` or `rv sync push` from corrupting a running job's files.
 
-snapshots older than 7 days are automatically pruned.
+snapshots older than 7 days are automatically pruned. (the scratch keepalive protects snapshots from the 90-day Rivanna purge — only rv's own 7-day cleanup applies.)
+
+**important:** your job runs inside the snapshot directory. any files your script writes to relative paths (e.g. `./artifacts/`, `./results/`) land in the snapshot, **not** in your persistent workspace. since snapshots are pruned after 7 days, always write outputs to an explicit `/scratch/` path:
+
+```python
+import os
+# SCRATCH is set by Rivanna (e.g. /scratch/abc1de)
+output_dir = os.path.join(os.environ["SCRATCH"], "my-results")
+os.makedirs(output_dir, exist_ok=True)
+```
+
+if you already wrote outputs to the snapshot, they're recoverable for up to 7 days. find them at:
+
+```
+/scratch/user/rv-workspaces/{project}/{branch}/snapshots/{jobName}-{timestamp}/
+```
+
+use `rv sync pull <snapshot-path>/outputs ./local-outputs/` to retrieve them. `rv run -f` (follow mode) prints the snapshot path when the job completes.
 
 ### sync behavior
 

@@ -103,7 +103,29 @@ rv gpu <jobId>      # specific job
 
 You can also create a `.rvignore` file (same syntax as `.gitignore`) to exclude additional files.
 
-### 8. Environment variables persist across jobs
+### 8. Write outputs to `/scratch/`, not relative paths
+
+**This is the #1 footgun for new users and AI agents.** Jobs run inside an ephemeral snapshot directory. If your script writes to a relative path (e.g. `artifacts/results.json`), the output lands in the snapshot — not your persistent workspace. Snapshots are pruned after 7 days.
+
+**Always write outputs to an absolute `/scratch/` path:**
+
+```python
+import os
+SCRATCH = os.environ.get("SCRATCH", "/scratch/abs6bd")
+output_dir = f"{SCRATCH}/my-results"
+os.makedirs(output_dir, exist_ok=True)
+torch.save(model.state_dict(), f"{output_dir}/model.pt")
+```
+
+If you already ran a job with relative outputs, the data is still there for up to 7 days. Use `rv run -f` (which prints the snapshot path on completion) or find it at:
+
+```
+/scratch/<user>/rv-workspaces/<project>/<branch>/snapshots/<jobName>-<timestamp>/
+```
+
+Then pull it locally with `rv sync pull <snapshot-path>/artifacts ./local-artifacts/`.
+
+### 9. Environment variables persist across jobs
 
 `rv env set` stores variables that are injected into ALL future jobs. Useful for:
 
@@ -116,7 +138,7 @@ rv env set OPENAI_API_KEY sk-...    # for eval judges
 
 View with `rv env list`. Remove with `rv env rm KEY`.
 
-### 9. Default walltime is 2:59:00 (just under 3h)
+### 10. Default walltime is 2:59:00 (just under 3h)
 
 This is intentional — jobs under 3 hours qualify for backfill scheduling, which often means near-instant allocation. For longer jobs, specify `--time`:
 
@@ -124,7 +146,7 @@ This is intentional — jobs under 3 hours qualify for backfill scheduling, whic
 rv run --time 10h -t a100 python train.py
 ```
 
-### 10. grep on Rivanna doesn't support `-P` (Perl regex)
+### 11. grep on Rivanna doesn't support `-P` (Perl regex)
 
 The `grep` on Rivanna compute nodes doesn't have Perl regex support. Use basic or extended regex, or tools like `awk`/`sed` instead.
 
@@ -133,7 +155,10 @@ The `grep` on Rivanna compute nodes doesn't have Perl regex support. Use basic o
 ### Submit a job and poll for completion
 
 ```bash
-# Submit
+# Submit and follow (recommended — prints snapshot path + sync commands on completion)
+rv run -t a100 --time 6h --name "training-run" -f python train.py
+
+# Or submit without following and poll manually
 rv run -t a100 --time 6h --name "training-run" python train.py
 
 # Check status periodically
@@ -216,14 +241,16 @@ rv run -g 8 -t a100 --time 12h -- torchrun --nproc_per_node=4 train.py
 **Job completed but no output files?**
 
 - Check `rv logs <jobId>` and `rv logs <jobId> --err` for errors
-- Verify your script writes to `/scratch/` (not `/tmp/` which is node-local)
-- Remember: the working directory inside the job is the snapshot, not your live code
+- Most likely cause: script wrote to a relative path, so outputs are in the snapshot (see gotcha #8)
+- Verify your script writes to an absolute `/scratch/` path (not relative paths, and not `/tmp/` which is node-local)
+- The job CWD is a snapshot, not your live code — relative writes go there
 
 **Can't find results?**
 
 - `rv exec "ls /scratch/abs6bd/.rv/logs/"` — check log files
-- `rv exec "ls /scratch/abs6bd/rv-workspaces/"` — check synced code
-- `rv sync pull /remote/path ./local/` — download results
+- `rv exec "ls /scratch/abs6bd/rv-workspaces/"` — check synced code and snapshots
+- If outputs are in a snapshot: `rv sync pull /scratch/abs6bd/rv-workspaces/<project>/<branch>/snapshots/<jobName>-<timestamp>/ ./local/`
+- `rv sync pull /remote/path ./local/` — download any remote path
 
 **OOM (out of memory)?**
 

@@ -16,6 +16,8 @@ rv run python train.py -g 4 -t a100
 
 **file sync.** `rv run` uploads your current directory. only git-tracked files sync. each job gets an immutable snapshot. use `.rvignore` to exclude extra files.
 
+**save outputs to `/scratch/`.** your job runs inside an ephemeral snapshot. files written to relative paths (like `./checkpoints/`) land in the snapshot and are pruned after 7 days. always write results, checkpoints, and artifacts to an absolute `/scratch/` path. the `SCRATCH` environment variable is available in every job.
+
 **output buffering.** rv auto-sets `PYTHONUNBUFFERED=1`. if you still see no output, check `rv logs --err` — the job may have crashed.
 
 **rv exec is login-node only.** no GPU access. use for file checks and queries. for GPU utilization, use `rv gpu`.
@@ -160,12 +162,12 @@ loss = -(log_probs * advantages).mean() + kl_coef * kl
 
 **job stuck in PENDING:** check `rv status`, try a different GPU type, use `--mig` for instant free allocation, reduce `--time` below 3h for backfill.
 
-**no output files:** check `rv logs --err` for errors. write to `/scratch/` not `/tmp/` (node-local). the job CWD is the snapshot, not your live code.
+**no output files:** most common cause is writing to relative paths — outputs end up in the ephemeral snapshot (pruned after 7 days). always write to `/scratch/`. also check `rv logs --err` for errors. don't write to `/tmp/` either (node-local, lost on job end).
 
 **can't find results:**
 
 ```bash
-rv exec "ls /scratch/USER/.rv/logs/"       # log files
-rv exec "ls /scratch/USER/rv-workspaces/"  # synced code
-rv sync pull /remote/path ./local/         # download
+rv exec "ls /scratch/USER/.rv/logs/"                    # log files
+rv exec "ls /scratch/USER/rv-workspaces/"               # synced code + snapshots
+rv sync pull /scratch/USER/rv-workspaces/PROJECT/BRANCH/snapshots/ ./local/  # recover snapshot outputs
 ```
