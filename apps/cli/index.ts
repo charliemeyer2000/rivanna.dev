@@ -25,7 +25,11 @@ async function main() {
     .version(pkg.version)
     .name("rv")
     .enablePositionalOptions()
-    .description("effortless GPU computing on UVA's Rivanna cluster");
+    .description("effortless GPU computing on UVA's Rivanna cluster")
+    .addHelpText(
+      "after",
+      "\nDocs:  https://rivanna.dev/docs\nLLMs:  https://rivanna.dev/llms.txt",
+    );
 
   registerInitCommand(program);
   registerUpCommand(program);
