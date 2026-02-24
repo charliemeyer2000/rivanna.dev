@@ -23,7 +23,7 @@ import { prepareExecution, type ExecutionResult } from "@/core/project.ts";
 import { lintForMultiNode, detectInferenceOnly } from "@/core/preflight.ts";
 import { analyzeForHardwareRetry } from "@/core/hardware-retry.ts";
 import { shellJoin } from "@/lib/shell-quote.ts";
-import { saveRequest } from "@/core/request-store.ts";
+import { saveRequest, reapLosers } from "@/core/request-store.ts";
 import type { SlurmClient } from "@/core/slurm.ts";
 
 interface RunOptions {
@@ -266,6 +266,10 @@ async function runRun(commandParts: string[], options: RunOptions) {
     ...(execution?.workDir && { snapshotPath: execution.workDir }),
   });
 
+  // Opportunistically reap losers from prior fan-out groups
+  const currentJobs = await slurm.getJobs();
+  reapLosers(slurm, currentJobs).catch(() => {});
+
   if (options.follow) {
     await followJob(slurm, config, request, submissions, execution, isJson);
   } else {
@@ -382,6 +386,10 @@ async function followJob(
         ...(execution?.workDir && { snapshotPath: execution.workDir }),
       });
     }
+
+    // Opportunistically reap losers from prior fan-out groups
+    const currentJobs = await slurm.getJobs();
+    reapLosers(slurm, currentJobs).catch(() => {});
 
     const monitorSpinner = isJson
       ? null
