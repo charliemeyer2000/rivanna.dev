@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.0](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.0.23...cli-v0.1.0) (2026-02-24)
+
+
+### Features
+
+* **cli, docs:** deslop + rv env import + simplifying --mig specification ([67af1da](https://github.com/charliemeyer2000/rivanna.dev/commit/67af1da4f447117834d22a0f13de9fec9f7c64f1))
+* **cli, site:** changelog ([ff466f1](https://github.com/charliemeyer2000/rivanna.dev/commit/ff466f166fa10f5a5ec00e60ae690d06dfc1ed23))
+* **cli:** better reapingLosers() ([4df5f6e](https://github.com/charliemeyer2000/rivanna.dev/commit/4df5f6e582dd3751c3f36069d0d2a0bbeb113671))
+
+
+### Other
+
+* **cli:** bump version to 0.0.24 ([5e25acc](https://github.com/charliemeyer2000/rivanna.dev/commit/5e25acc72b0cac45ad4308368e99f18e735c41ca))
+
 ## [0.0.23](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.0.22...cli-v0.0.23) (2026-02-23)
 
 ### Other
