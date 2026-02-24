@@ -52,13 +52,13 @@ function parseChangelog(markdown: string): ChangelogEntry[] {
     }
 
     // Empty marker
-    if (line.includes("*No notable changes.*")) {
+    if (line.includes("No notable changes.")) {
       current.empty = true;
       continue;
     }
 
-    // List item: * **scope:** message ([sha](url))
-    const itemMatch = line.match(/^\* (.+)/);
+    // List item: * or - **scope:** message ([sha](url))
+    const itemMatch = line.match(/^[*-] (.+)/);
     if (itemMatch && currentSection) {
       // Extract the link if present
       const linkMatch = itemMatch[1].match(
