@@ -187,13 +187,14 @@ ai_api_key = "sk-ant-..."`}</code>
         </h3>
         <p className="text-sm text-gray-600">
           use <code className="text-orange-accent">rv env</code> to manage
-          variables that are injected into every job. these are stored remotely
-          in env files and loaded at job start. useful for API keys, model
-          paths, and other secrets.
+          variables that are injected into every job. useful for API keys and
+          other secrets. env vars are{" "}
+          <strong className="text-black">global</strong> — use config files
+          (Hydra, argparse) for experiment-specific settings.
         </p>
         <CodeBlock className="mb-2">
           <code className="text-sm text-black">
-            rv env set HF_TOKEN hf_abc123...
+            rv env import .env{"\n"}rv env set HF_TOKEN hf_abc123...
           </code>
         </CodeBlock>
         <CodeBlock className="mb-2">
@@ -204,7 +205,8 @@ ai_api_key = "sk-ant-..."`}</code>
         </CodeBlock>
         <p className="text-xs text-gray-500 mt-2">
           rv also auto-sets these variables in every job: OMP_NUM_THREADS,
-          TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR.
+          TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR,
+          RV_OUTPUT_DIR.
         </p>
       </section>
 
@@ -322,6 +324,14 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
                 </td>
                 <td className="px-3 py-2 text-gray-600">
                   per-node log files (multi-node jobs)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.rv/outputs/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  persistent job output files (RV_OUTPUT_DIR)
                 </td>
               </tr>
               <tr className="border-b border-gray-100">

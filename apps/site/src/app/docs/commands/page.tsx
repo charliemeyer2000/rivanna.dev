@@ -175,6 +175,16 @@ export default function CommandsPage() {
             description: "shortcut for --gpu 1 --type mig (free)",
           },
           {
+            flag: "-o, --output <paths...>",
+            description:
+              "copy these paths from snapshot to persistent storage after job completes",
+          },
+          {
+            flag: "--single-node",
+            description:
+              "force single-node allocation (no multi-node strategies)",
+          },
+          {
             flag: "-f, --follow",
             description: "wait for allocation and tail logs",
           },
@@ -214,6 +224,24 @@ export default function CommandsPage() {
               <span className="text-gray-400"> # wait + tail logs</span>
             </code>
           </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv run --output ./artifacts python train.py
+              <span className="text-gray-400">
+                {" "}
+                # auto-copy artifacts after job
+              </span>
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv run -g 4 --single-node python generate.py
+              <span className="text-gray-400">
+                {" "}
+                # force single-node (inference)
+              </span>
+            </code>
+          </CodeBlock>
         </div>
       </CommandSection>
 
@@ -233,7 +261,7 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-stop"
         name="rv stop"
-        description="Cancel jobs on Rivanna. Also available as rv cancel. Pass a job ID to cancel a specific job, or use --all to cancel everything."
+        description="Cancel jobs on Rivanna. Also available as rv cancel. Accepts a job ID or job name. When cancelling a job that's part of a fan-out strategy group, rv shows all sibling strategies and offers to cancel them together. Use rv stop instead of scancel to avoid orphaning strategies."
         usage="rv stop 12345"
         options={[
           {
@@ -243,6 +271,15 @@ export default function CommandsPage() {
         ]}
       >
         <div className="space-y-2 mt-3">
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv stop my-job-name
+              <span className="text-gray-400">
+                {" "}
+                # cancel by name (all strategies)
+              </span>
+            </code>
+          </CodeBlock>
           <CodeBlock>
             <code className="text-sm text-black">
               rv stop --all
@@ -439,14 +476,29 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-env"
         name="rv env"
-        description="Manage environment variables that are injected into every job. Useful for API keys, model paths, and other secrets. Sensitive values are masked in display."
-        usage="rv env set HF_TOKEN hf_abc123..."
+        description="Manage environment variables that are injected into every job. Useful for API keys and other secrets. Env vars are global — use config files for experiment-specific settings."
+        usage="rv env import .env"
       >
         <div className="space-y-4 mt-3">
           <div>
             <p className="text-sm font-medium text-black mb-2">env set</p>
             <CodeBlock>
               <code className="text-sm text-black">rv env set KEY value</code>
+            </CodeBlock>
+          </div>
+          <div>
+            <p className="text-sm font-medium text-black mb-2">env import</p>
+            <p className="text-xs text-gray-500 mb-1">
+              bulk-import from a .env file (defaults to .env in current
+              directory)
+            </p>
+            <CodeBlock className="mb-2">
+              <code className="text-sm text-black">rv env import</code>
+            </CodeBlock>
+            <CodeBlock>
+              <code className="text-sm text-black">
+                rv env import .env.prod
+              </code>
             </CodeBlock>
           </div>
           <div>

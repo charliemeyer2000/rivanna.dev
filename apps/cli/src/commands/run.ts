@@ -1,7 +1,6 @@
 import type { Command } from "commander";
 import ora from "ora";
 import type {
-  GPUType,
   RvConfig,
   UserRequest,
   StrategySubmission,
@@ -13,14 +12,15 @@ import {
   verifyAllocation,
   getTopologyWarnings,
 } from "@/core/allocator.ts";
-import { ensureSetup, parseTime } from "@/lib/setup.ts";
+import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
+import { NOTIFY_URL } from "@/lib/constants.ts";
+import { addGpuOptions, parseGpuOptions } from "@/lib/gpu-options.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
 import { prepareExecution, type ExecutionResult } from "@/core/project.ts";
-import { lintForMultiNode } from "@/core/preflight.ts";
+import { lintForMultiNode, detectInferenceOnly } from "@/core/preflight.ts";
 import { analyzeForHardwareRetry } from "@/core/hardware-retry.ts";
 import { shellJoin } from "@/lib/shell-quote.ts";
 import { saveRequest } from "@/core/request-store.ts";
@@ -35,23 +35,26 @@ interface RunOptions {
   mig?: boolean;
   json?: boolean;
   follow?: boolean;
+  output?: string[];
+  singleNode?: boolean;
 }
 
 export function registerRunCommand(program: Command) {
-  program
+  const cmd = program
     .command("run")
     .description("Run a command on Rivanna GPUs")
     .passThroughOptions()
-    .argument("<command...>", "file path or command to run")
-    .option("-g, --gpu <n>", "number of GPUs", "1")
-    .option("-t, --type <type>", "GPU type")
-    .option("--time <duration>", "total time needed", "2:59:00")
-    .option("--name <name>", "job name")
+    .argument("<command...>", "file path or command to run");
+
+  addGpuOptions(cmd)
     .option(
-      "--mem <size>",
-      "total CPU memory (e.g., 200G). Auto-calculated if omitted",
+      "-o, --output <paths...>",
+      "copy these paths from snapshot to persistent storage after job (e.g., ./artifacts ./results)",
     )
-    .option("--mig", "shortcut for --gpu 1 --type mig (free)")
+    .option(
+      "--single-node",
+      "force single-node allocation (no multi-node strategies)",
+    )
     .option("--json", "output as JSON")
     .option("-f, --follow", "wait for allocation and tail logs")
     .action(async (commandParts: string[], options: RunOptions) => {
@@ -84,6 +87,9 @@ const RV_RUN_FLAGS = new Set([
   "--json",
   "-f",
   "--follow",
+  "-o",
+  "--output",
+  "--single-node",
 ]);
 
 function warnMisplacedFlags(commandParts: string[]): void {
@@ -98,29 +104,49 @@ function warnMisplacedFlags(commandParts: string[]): void {
   }
 }
 
+const ENV_HACK_RE =
+  /source\s+\S*\.env|set\s+-a\s*&&\s*source|export\s+(HF_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|WANDB_API_KEY|API_KEY)\s*=/;
+
+function hintEnvUsage(rawCommand: string): void {
+  if (ENV_HACK_RE.test(rawCommand)) {
+    console.log(
+      theme.info(
+        `\n  tip: use ${theme.accent("rv env import .env")} to load env vars into all jobs automatically`,
+      ),
+    );
+  }
+}
+
+function hintLongCommand(rawCommand: string): void {
+  if (
+    rawCommand.length > 150 &&
+    (/&&/.test(rawCommand) || /\|\|/.test(rawCommand))
+  ) {
+    console.log(
+      theme.info(
+        `\n  tip: long inline commands are fragile in job logs — consider ${theme.accent("rv run bash run.sh")} instead`,
+      ),
+    );
+  }
+}
+
 async function runRun(commandParts: string[], options: RunOptions) {
   warnMisplacedFlags(commandParts);
   const { config, slurm } = ensureSetup();
   const ssh = slurm.sshClient;
   const isJson = !!options.json;
 
-  let gpuCount = parseInt(options.gpu, 10);
-  let gpuType: GPUType | undefined;
-  if (options.mig) {
-    gpuCount = 1;
-    gpuType = "mig";
-  } else if (options.type) {
-    gpuType = GPU_TYPE_ALIASES[options.type.toLowerCase()];
-    if (!gpuType) {
-      throw new Error(`Unknown GPU type: "${options.type}"`);
-    }
-  }
-
-  const time = parseTime(options.time);
+  const { gpuCount, gpuType, time } = parseGpuOptions(options);
 
   // Generate job name first (only needs raw command string)
   const rawCommand =
     commandParts.length === 1 ? commandParts[0]! : shellJoin(commandParts);
+
+  if (!isJson) {
+    hintEnvUsage(rawCommand);
+    hintLongCommand(rawCommand);
+  }
+
   let jobName = options.name;
   if (!jobName) {
     jobName = generateJobName(rawCommand);
@@ -153,6 +179,19 @@ async function runRun(commandParts: string[], options: RunOptions) {
     }
   }
 
+  // Auto-detect inference scripts → force single-node
+  let singleNode = options.singleNode ?? false;
+  if (!singleNode && gpuCount >= 4 && execution?.localFilePath && !isJson) {
+    if (detectInferenceOnly(execution.localFilePath)) {
+      console.log(
+        theme.info(
+          `  Detected inference script (device_map without training) — skipping multi-node strategies`,
+        ),
+      );
+      singleNode = true;
+    }
+  }
+
   const command = execution ? execution.command : rawCommand;
 
   const request: UserRequest = {
@@ -170,6 +209,8 @@ async function runRun(commandParts: string[], options: RunOptions) {
     mem: options.mem,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
     sharedHfCache: config.shared?.hf_cache,
+    outputPaths: options.output,
+    singleNode,
   };
 
   // Allocate + submit
@@ -441,6 +482,7 @@ async function followJob(
     // Post-job summary with actionable commands
     if (!isJson) {
       const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
+      const outputDir = `/scratch/${config.connection.user}/.rv/outputs/${request.jobName}-${winner.jobId}`;
       console.log(theme.muted("\n  Files on Rivanna:"));
       if (execution?.codeDir) {
         console.log(theme.muted(`    Workspace:    ${execution.codeDir}`));
@@ -457,6 +499,7 @@ async function followJob(
       } else {
         console.log(theme.muted(`    Logs:         ${logBase}.{out,err}`));
       }
+      console.log(theme.muted(`    Outputs:      ${outputDir}`));
       console.log(theme.muted(`    Checkpoints:  ${ckptDir}`));
       if (execution?.git) {
         const dirty = execution.git.dirty ? "*" : "";
@@ -467,6 +510,7 @@ async function followJob(
         );
       }
       console.log();
+      console.log(theme.muted(`  rv sync pull ${outputDir} ./outputs`));
       if (execution?.codeDir) {
         console.log(theme.muted(`  rv sync pull ${execution.codeDir} .`));
       }

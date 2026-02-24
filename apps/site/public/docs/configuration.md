@@ -78,15 +78,18 @@ ai_api_key = "sk-ant-..."
 
 ## environment variables
 
-use `rv env` to manage variables that are injected into every job. these are stored remotely in env files and loaded at job start. useful for API keys, model paths, and other secrets.
+use `rv env` to manage variables that are injected into every job. these are stored locally and written to per-job env files at submission time. useful for API keys and other secrets.
+
+env vars are **global** — they apply to all projects and branches. use them for credentials and identity (API keys, tokens). for experiment-specific config, use config files (Hydra, argparse, YAML) which are git-tracked and per-branch by design.
 
 ```bash
 rv env set HF_TOKEN hf_abc123...
+rv env import .env          # bulk-import from a .env file
 rv env list
 rv env rm HF_TOKEN
 ```
 
-rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR.
+rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR, RV_OUTPUT_DIR.
 
 ## scratch keepalive
 
@@ -120,19 +123,21 @@ the shared directory is created with group-writable setgid permissions (chmod g+
 
 rv organizes remote files under your scratch directory:
 
-| path                                                                  | purpose                                |
-| --------------------------------------------------------------------- | -------------------------------------- |
-| /scratch/user/.rv/                                                    | rv home directory                      |
-| /scratch/user/.rv/logs/                                               | job output logs                        |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                  |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)   |
-| /scratch/user/.rv/env/                                                | environment variable files             |
-| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv    |
-| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root |
-| .../code/                                                             | mutable workspace (sync target)        |
-| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot             |
-| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)      |
-| /scratch/user/.cache/uv/                                              | uv package cache                       |
+| path                                                                  | purpose                                  |
+| --------------------------------------------------------------------- | ---------------------------------------- |
+| /scratch/user/.rv/                                                    | rv home directory                        |
+| /scratch/user/.rv/logs/                                               | job output logs                          |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                    |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)     |
+| /scratch/user/.rv/outputs/                                            | persistent job output files              |
+| .../&#123;jobName&#125;-&#123;jobId&#125;/                            | per-job output directory (RV_OUTPUT_DIR) |
+| /scratch/user/.rv/env/                                                | environment variable files               |
+| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv      |
+| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root   |
+| .../code/                                                             | mutable workspace (sync target)          |
+| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot               |
+| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)        |
+| /scratch/user/.cache/uv/                                              | uv package cache                         |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
 
@@ -153,12 +158,15 @@ each `rv run` job gets its own **immutable snapshot** of the code directory. sna
 
 snapshots older than 7 days are automatically pruned. (the scratch keepalive protects snapshots from the 90-day Rivanna purge — only rv's own 7-day cleanup applies.)
 
-**important:** your job runs inside the snapshot directory. any files your script writes to relative paths (e.g. `./artifacts/`, `./results/`) land in the snapshot, **not** in your persistent workspace. since snapshots are pruned after 7 days, always write outputs to an explicit `/scratch/` path:
+**important:** your job runs inside the snapshot directory. any files your script writes to relative paths (e.g. `./artifacts/`, `./results/`) land in the snapshot, **not** in your persistent workspace. since snapshots are pruned after 7 days, use one of these approaches:
+
+- write to `RV_OUTPUT_DIR` (set automatically in every job, persists at `/scratch/user/.rv/outputs/{jobName}-{jobId}/`)
+- use `--output ./artifacts` on `rv run` to auto-copy paths after completion
+- write to an absolute `/scratch/` path manually
 
 ```python
 import os
-# SCRATCH is set by Rivanna (e.g. /scratch/abc1de)
-output_dir = os.path.join(os.environ["SCRATCH"], "my-results")
+output_dir = os.environ.get("RV_OUTPUT_DIR", "./results")
 os.makedirs(output_dir, exist_ok=True)
 ```
 

@@ -345,7 +345,8 @@ export function generateStrategies(
     const suPerHour = spec.suPerGPUHour * gpuCount;
     const canSingleNode = gpuCount <= spec.maxPerJob;
     const gpusPerNode = Math.ceil(gpuCount / 2);
-    const canMultiNode = gpuCount >= 4 && gpusPerNode <= spec.perNode;
+    const canMultiNode =
+      !request.singleNode && gpuCount >= 4 && gpusPerNode <= spec.perNode;
 
     // --- Single-node strategies ---
     if (canSingleNode) {
@@ -691,6 +692,7 @@ export function buildScript(strategy: Strategy, request: UserRequest): string {
     notifyToken: request.notifyToken,
     sharedHfCache: request.sharedHfCache,
     excludeNodes: request.excludeNodes,
+    outputPaths: request.outputPaths,
   };
 
   if (strategy.checkpointRestart) {

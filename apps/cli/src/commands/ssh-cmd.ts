@@ -110,7 +110,6 @@ async function runSsh(jobId: string | undefined, options: SshOptions) {
     config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
   const envExports = [
     `RV_CHECKPOINT_DIR=${ckptDir}`,
-    `CHECKPOINT_DIR=${ckptDir}`,
     `HF_HOME=${hfHome}`,
     `UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
     `PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,

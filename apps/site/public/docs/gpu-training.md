@@ -16,7 +16,11 @@ rv run python train.py -g 4 -t a100
 
 **file sync.** `rv run` uploads your current directory. only git-tracked files sync. each job gets an immutable snapshot. use `.rvignore` to exclude extra files.
 
-**save outputs to `/scratch/`.** your job runs inside an ephemeral snapshot. files written to relative paths (like `./checkpoints/`) land in the snapshot and are pruned after 7 days. always write results, checkpoints, and artifacts to an absolute `/scratch/` path. the `SCRATCH` environment variable is available in every job.
+**save outputs to persistent storage.** your job runs inside an ephemeral snapshot. files written to relative paths (like `./checkpoints/`) land in the snapshot and are pruned after 7 days. use one of these approaches:
+
+- write to `RV_OUTPUT_DIR` (set automatically in every job, persists)
+- use `--output ./artifacts` on `rv run` to auto-copy paths after completion
+- write to an absolute `/scratch/` path manually
 
 **output buffering.** rv auto-sets `PYTHONUNBUFFERED=1`. if you still see no output, check `rv logs --err` — the job may have crashed.
 
@@ -58,6 +62,39 @@ rv run -g 4 -t a100 -- torchrun --nproc_per_node=2 train.py
 ```
 
 rv handles srun + torchrun coordination automatically. BF16 on A100/H200 (compute capability >= 8). FP16 + GradScaler on older GPUs.
+
+## running inference
+
+for large model inference (not training), use `device_map="auto"` to shard across GPUs on a single node.
+
+```bash
+rv run -g 4 -t a100 --single-node python generate.py
+```
+
+`--single-node` prevents multi-node strategies. `device_map="auto"` only shards within one node — multi-node would duplicate your workload.
+
+**memory estimation:** `model_params × bytes_per_param × 1.1` — a 70B bf16 model needs ~147 GB VRAM. 2× A100-80 (160 GB) or 2× H200 (282 GB) works. rv auto-detects inference scripts (looks for `device_map` without training patterns) and skips multi-node automatically.
+
+**saving results:** use `RV_OUTPUT_DIR` (set automatically in every job) or `--output`:
+
+```python
+import os
+output_dir = os.environ.get("RV_OUTPUT_DIR", "./results")
+os.makedirs(output_dir, exist_ok=True)
+```
+
+```bash
+# or copy specific paths after the job completes
+rv run -g 4 --output ./results ./artifacts python generate.py
+```
+
+**environment variables:** API keys for scoring (Anthropic, OpenAI) or model downloads (HuggingFace). these are global — use config files for experiment-specific settings:
+
+```bash
+rv env import .env                    # bulk-import from local .env file
+rv env set HF_TOKEN hf_abc123...      # or set individually
+rv env list                           # show stored vars
+```
 
 ## process groups
 
@@ -162,7 +199,7 @@ loss = -(log_probs * advantages).mean() + kl_coef * kl
 
 **job stuck in PENDING:** check `rv status`, try a different GPU type, use `--mig` for instant free allocation, reduce `--time` below 3h for backfill.
 
-**no output files:** most common cause is writing to relative paths — outputs end up in the ephemeral snapshot (pruned after 7 days). always write to `/scratch/`. also check `rv logs --err` for errors. don't write to `/tmp/` either (node-local, lost on job end).
+**no output files:** most common cause is writing to relative paths — outputs end up in the ephemeral snapshot (pruned after 7 days). use `RV_OUTPUT_DIR` (set automatically), `--output` flag, or write to `/scratch/` directly. also check `rv logs --err` for errors. don't write to `/tmp/` either (node-local, lost on job end).
 
 **can't find results:**
 

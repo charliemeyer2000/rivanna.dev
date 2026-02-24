@@ -4,6 +4,7 @@ import { PATHS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { tailJobLogs, type LogStream } from "@/core/log-tailer.ts";
+import { reapLosers } from "@/core/request-store.ts";
 
 interface LogsOptions {
   out?: boolean;
@@ -109,6 +110,9 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
     const spinner = isJson ? null : ora("Finding jobs...").start();
     const jobs = await slurm.getJobs();
     spinner?.stop();
+
+    // Opportunistic fan-out cleanup
+    reapLosers(slurm, jobs).catch(() => {});
 
     if (jobs.length > 0) {
       // Prefer running, then most recent

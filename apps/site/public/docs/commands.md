@@ -45,19 +45,23 @@ rv run python train.py -g 4 -t a100
 rv run python train.py
 ```
 
-| flag                | description                            | default        |
-| ------------------- | -------------------------------------- | -------------- |
-| `-g, --gpu <n>`     | number of GPUs                         | 1              |
-| `-t, --type <type>` | GPU type                               | —              |
-| `--time <duration>` | total time needed                      | 2:59:00        |
-| `--name <name>`     | job name                               | auto-generated |
-| `--mem <size>`      | total CPU memory                       | auto           |
-| `--mig`             | shortcut for --gpu 1 --type mig (free) | —              |
-| `-f, --follow`      | wait for allocation and tail logs      | —              |
+| flag                   | description                                                              | default        |
+| ---------------------- | ------------------------------------------------------------------------ | -------------- |
+| `-g, --gpu <n>`        | number of GPUs                                                           | 1              |
+| `-t, --type <type>`    | GPU type                                                                 | —              |
+| `--time <duration>`    | total time needed                                                        | 2:59:00        |
+| `--name <name>`        | job name                                                                 | auto-generated |
+| `--mem <size>`         | total CPU memory                                                         | auto           |
+| `--mig`                | shortcut for --gpu 1 --type mig (free)                                   | —              |
+| `-o, --output <paths>` | copy these paths from snapshot to persistent storage after job completes | —              |
+| `--single-node`        | force single-node allocation (no multi-node strategies)                  | —              |
+| `-f, --follow`         | wait for allocation and tail logs                                        | —              |
 
 ```bash
 rv run -g 4 -t a100 python train.py
 rv run -f torchrun --nproc_per_node=4 train.py   # wait + tail logs
+rv run --output ./artifacts python train.py       # auto-copy artifacts after job
+rv run -g 4 --single-node python generate.py      # force single-node (inference)
 ```
 
 ## rv ps
@@ -78,11 +82,12 @@ rv ps
 
 Also available as `rv cancel`.
 
-Cancel jobs on Rivanna. Pass a job ID to cancel a specific job, or use --all to cancel everything.
+Cancel jobs on Rivanna. Accepts a job ID or job name. When cancelling a job that's part of a fan-out strategy group, rv will show all sibling strategies and offer to cancel them together. use `rv stop` instead of `scancel` to avoid orphaning strategies.
 
 ```bash
-rv stop 12345
-rv stop --all    # cancel everything
+rv stop 12345              # cancel by ID (prompts to cancel siblings)
+rv stop my-job-name        # cancel by name (all strategies)
+rv stop --all              # cancel everything
 ```
 
 | flag        | description                                  |
@@ -188,13 +193,24 @@ rv forward --stop     # stop all forwards
 
 ## rv env
 
-Manage environment variables that are injected into every job. Useful for API keys, model paths, and other secrets. Sensitive values are masked in display.
+Manage environment variables that are injected into every job. Useful for API keys and other secrets. Sensitive values are masked in display.
+
+Environment variables are **global** — they apply to all projects and branches. Use them for credentials and identity (API keys, tokens). For experiment-specific config, use config files (Hydra, argparse, YAML) which are git-tracked and per-branch by design.
 
 ### env set
 
 ```bash
 rv env set HF_TOKEN hf_abc123...
-rv env set MODEL_PATH /scratch/models
+rv env set OPENAI_API_KEY sk-...
+```
+
+### env import
+
+Bulk-import variables from a `.env` file. Reads the file locally and stores each key via `rv env set`. Existing keys are overwritten. Defaults to `.env` in the current directory.
+
+```bash
+rv env import             # imports .env
+rv env import .env.prod   # imports a specific file
 ```
 
 ### env list

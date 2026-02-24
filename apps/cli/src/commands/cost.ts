@@ -1,10 +1,9 @@
 import type { Command } from "commander";
 import { GPU_SPECS } from "@rivanna/shared";
 import type { GPUType } from "@rivanna/shared";
-import { GPU_TYPE_ALIASES } from "@/lib/constants.ts";
-import { parseTime } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { renderTable } from "@/lib/table.ts";
+import { addGpuOptions, parseGpuOptions } from "@/lib/gpu-options.ts";
 
 interface CostOptions {
   gpu: string;
@@ -14,12 +13,9 @@ interface CostOptions {
 }
 
 export function registerCostCommand(program: Command) {
-  program
-    .command("cost")
-    .description("Estimate SU cost for a job")
-    .option("-g, --gpu <n>", "number of GPUs", "1")
-    .option("-t, --type <type>", "GPU type")
-    .option("--time <duration>", "time duration", "2:59:00")
+  const cmd = program.command("cost").description("Estimate SU cost for a job");
+
+  addGpuOptions(cmd, { full: false })
     .option("--json", "output as JSON")
     .action(async (options: CostOptions) => {
       try {
@@ -34,8 +30,7 @@ export function registerCostCommand(program: Command) {
 }
 
 async function runCost(options: CostOptions) {
-  const gpuCount = parseInt(options.gpu, 10);
-  const time = parseTime(options.time);
+  const { gpuCount, gpuType: requestedType, time } = parseGpuOptions(options);
   const hours = time.seconds / 3600;
   const isJson = !!options.json;
 
@@ -52,14 +47,8 @@ async function runCost(options: CostOptions) {
     // Not initialized or SSH unavailable — skip balance
   }
 
-  if (options.type) {
-    // Specific GPU type
-    const gpuType = GPU_TYPE_ALIASES[options.type.toLowerCase()];
-    if (!gpuType) {
-      throw new Error(
-        `Unknown GPU type: "${options.type}". Valid: ${Object.keys(GPU_TYPE_ALIASES).join(", ")}`,
-      );
-    }
+  if (requestedType) {
+    const gpuType = requestedType;
     const spec = GPU_SPECS[gpuType];
     const totalSU = spec.suPerGPUHour * gpuCount * hours;
 

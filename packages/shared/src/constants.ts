@@ -130,6 +130,7 @@ export const PATHS = {
   envFiles: (user: string) => `/scratch/${user}/.rv/env`,
   envs: (user: string) => `/scratch/${user}/.rv/envs`,
   wheels: (user: string) => `/scratch/${user}/.rv/wheels`,
+  outputs: (user: string) => `/scratch/${user}/.rv/outputs`,
   workspaces: (user: string) => `/scratch/${user}/rv-workspaces`,
   cache: {
     uv: (user: string) => `/scratch/${user}/.cache/uv`,

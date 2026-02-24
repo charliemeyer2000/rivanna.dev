@@ -28,6 +28,7 @@ import { cleanStaleForwards } from "@/core/forward-store.ts";
 import {
   loadRequests,
   buildJobIndex,
+  reapLosers,
   type RequestRecord,
 } from "@/core/request-store.ts";
 import { VPNError, SSHConnectionError, SSHTimeoutError } from "@/lib/errors.ts";
@@ -210,6 +211,9 @@ async function runStatus(options: StatusOptions) {
   const nodes = parseSinfo(batchResults[3] ?? "");
   const gpuSummary = summarizeGPUAvailability(nodes);
   const forwards = cleanStaleForwards();
+
+  // Opportunistic fan-out cleanup
+  reapLosers(slurm, jobs).catch(() => {});
 
   spinner?.stop();
 

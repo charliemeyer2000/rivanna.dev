@@ -13,20 +13,30 @@ rv run -t a100 --time 3h --name "my-job" python train.py
 # Submit and wait for output
 rv run -t a100 --time 3h --name "my-job" -f python train.py
 
+# Auto-copy outputs from snapshot to persistent storage after job
+rv run --output ./artifacts ./results python train.py
+
+# Force single-node for inference (no multi-node strategies)
+rv run -g 4 -t a100 --single-node python generate.py
+
 # Check job status (also: rv ls)
 rv ps
 
 # View logs (auto-follows running jobs)
 rv logs <jobId>
 
-# Cancel a job (also: rv cancel)
+# Cancel a job by ID or name (also: rv cancel)
 rv stop <jobId>
+rv stop <jobName>
 
 # Run a quick command on login node (no GPU)
 rv exec "ls /scratch/abs6bd/"
 
 # Check GPU utilization of a running job
 rv gpu <jobId>
+
+# Import env vars from .env file (bulk)
+rv env import .env
 
 # Set environment variable for all future jobs
 rv env set KEY VALUE
@@ -51,12 +61,16 @@ rv sync pull /scratch/abs6bd/results ./local_results/
 
 ### 1. `rv stop` and `rv cancel` are the same command
 
-Both work — `rv cancel` is an alias for `rv stop`:
+Both work — `rv cancel` is an alias for `rv stop`. Accepts job IDs or job names, and is strategy-group-aware:
 
 ```bash
-rv stop <jobId>      # works
+rv stop <jobId>      # cancels job + prompts to cancel sibling strategies
+rv stop <jobName>    # cancels all strategies for that job name
 rv cancel <jobId>    # also works (alias)
+rv stop --all        # cancels everything
 ```
+
+**Do not use `scancel` directly.** `rv stop` is aware of fan-out strategy groups and will cancel siblings together. Using `scancel` on one strategy can leave orphans or lose queue position.
 
 ### 2. `rv ps` time format
 
@@ -103,40 +117,49 @@ rv gpu <jobId>      # specific job
 
 You can also create a `.rvignore` file (same syntax as `.gitignore`) to exclude additional files.
 
-### 8. Write outputs to `/scratch/`, not relative paths
+### 8. Write outputs to persistent storage
 
-**This is the #1 footgun for new users and AI agents.** Jobs run inside an ephemeral snapshot directory. If your script writes to a relative path (e.g. `artifacts/results.json`), the output lands in the snapshot — not your persistent workspace. Snapshots are pruned after 7 days.
+Jobs run inside an ephemeral snapshot directory. Files written to relative paths land in the snapshot and are pruned after 7 days. Use one of these approaches:
 
-**Always write outputs to an absolute `/scratch/` path:**
+**Option A: Use `RV_OUTPUT_DIR` (recommended).** Set automatically in every job, persists across snapshot pruning:
+
+```python
+import os
+output_dir = os.environ.get("RV_OUTPUT_DIR", "./results")
+os.makedirs(output_dir, exist_ok=True)
+torch.save(model.state_dict(), f"{output_dir}/model.pt")
+```
+
+**Option B: Use `--output` flag.** Copies specified paths from the snapshot to persistent storage after the job completes — no script changes needed:
+
+```bash
+rv run -t a100 --output ./artifacts ./results python train.py
+```
+
+**Option C: Write to `/scratch/` directly:**
 
 ```python
 import os
 SCRATCH = os.environ.get("SCRATCH", "/scratch/abs6bd")
 output_dir = f"{SCRATCH}/my-results"
 os.makedirs(output_dir, exist_ok=True)
-torch.save(model.state_dict(), f"{output_dir}/model.pt")
 ```
 
-If you already ran a job with relative outputs, the data is still there for up to 7 days. Use `rv run -f` (which prints the snapshot path on completion) or find it at:
+Output dir location: `/scratch/<user>/.rv/outputs/<jobName>-<jobId>/`. Pull locally with `rv sync pull <output-dir> ./local/`.
 
-```
-/scratch/<user>/rv-workspaces/<project>/<branch>/snapshots/<jobName>-<timestamp>/
-```
+### 9. Environment variables are global, not per-project
 
-Then pull it locally with `rv sync pull <snapshot-path>/artifacts ./local-artifacts/`.
-
-### 9. Environment variables persist across jobs
-
-`rv env set` stores variables that are injected into ALL future jobs. Useful for:
+`rv env` stores variables that are injected into ALL future jobs across all projects and branches. Use them for credentials and identity — not experiment config:
 
 ```bash
-rv env set HF_TOKEN hf_abc123...
-rv env set PYTHONUNBUFFERED 1
-rv env set HF_ALLOW_CODE_EVAL 1
-rv env set OPENAI_API_KEY sk-...    # for eval judges
+rv env import .env                   # bulk-import from local .env file
+rv env set HF_TOKEN hf_abc123...     # or set individually
+rv env set OPENAI_API_KEY sk-...     # for eval judges
 ```
 
 View with `rv env list`. Remove with `rv env rm KEY`.
+
+For experiment-specific configuration (hyperparams, model paths, etc.), use config files (Hydra, argparse, YAML) — they're git-tracked and per-branch by design.
 
 ### 10. Default walltime is 2:59:00 (just under 3h)
 

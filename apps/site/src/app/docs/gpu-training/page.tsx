@@ -119,6 +119,19 @@ export default function GuidesPage() {
 
         <div>
           <p className="text-sm font-medium text-black mb-1">
+            save outputs to persistent storage
+          </p>
+          <p className="text-sm text-gray-600">
+            your job runs inside an ephemeral snapshot (pruned after 7 days).
+            use <code className="text-orange-accent">RV_OUTPUT_DIR</code> (set
+            automatically), the{" "}
+            <code className="text-orange-accent">--output</code> flag, or write
+            to <code className="text-orange-accent">/scratch/</code> directly.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
             output buffering
           </p>
           <p className="text-sm text-gray-600">
@@ -245,6 +258,64 @@ rv run -g 1 -t a6000 python train.py      # dedicated GPU`}
         <Tip>
           BF16 on A100/H200 (compute capability {">"}= 8). FP16 + GradScaler on
           older GPUs.
+        </Tip>
+      </section>
+
+      {/* ── Running Inference ────────────────────────────────────── */}
+      <section
+        id="inference"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">running inference</h3>
+        <p className="text-sm text-gray-600">
+          for large model inference (not training), use{" "}
+          <code className="text-orange-accent">
+            device_map=&quot;auto&quot;
+          </code>{" "}
+          to shard across GPUs on a single node.
+        </p>
+
+        <CodeBlock>
+          <code className="text-sm text-black">
+            rv run -g 4 -t a100 --single-node python generate.py
+          </code>
+        </CodeBlock>
+
+        <p className="text-sm text-gray-600">
+          <code className="text-orange-accent">--single-node</code> prevents
+          multi-node strategies.{" "}
+          <code className="text-orange-accent">
+            device_map=&quot;auto&quot;
+          </code>{" "}
+          only shards within one node — multi-node would duplicate your
+          workload. rv auto-detects inference scripts and skips multi-node
+          automatically.
+        </p>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">saving results</p>
+          <p className="text-sm text-gray-600">
+            use <code className="text-orange-accent">RV_OUTPUT_DIR</code> (set
+            automatically in every job) or{" "}
+            <code className="text-orange-accent">--output</code>:
+          </p>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              {`import os
+output_dir = os.environ.get("RV_OUTPUT_DIR", "./results")
+os.makedirs(output_dir, exist_ok=True)`}
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv run -g 4 --output ./results python generate.py
+            </code>
+          </CodeBlock>
+        </div>
+
+        <Tip>
+          memory estimation: model_params x bytes_per_param x 1.1 — a 70B bf16
+          model needs ~147 GB VRAM.
         </Tip>
       </section>
 
@@ -514,10 +585,13 @@ loss = -(log_probs * advantages).mean() + kl_coef * kl`}
             <p className="text-sm font-medium text-black">no output files</p>
             <p className="text-sm text-gray-600">
               check <code className="text-orange-accent">rv logs --err</code>{" "}
-              for errors. write to{" "}
-              <code className="text-orange-accent">/scratch/</code> not{" "}
-              <code className="text-orange-accent">/tmp/</code> (node-local).
-              the job CWD is the snapshot, not your live code.
+              for errors. use{" "}
+              <code className="text-orange-accent">RV_OUTPUT_DIR</code> (set
+              automatically),{" "}
+              <code className="text-orange-accent">--output</code> flag, or
+              write to <code className="text-orange-accent">/scratch/</code>.
+              don&apos;t use <code className="text-orange-accent">/tmp/</code>{" "}
+              (node-local). the job CWD is the snapshot, not your live code.
             </p>
           </div>
 

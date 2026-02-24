@@ -144,8 +144,14 @@ export function generatePreamble(opts: TemplateOptions): string {
   const checkpointDir = `${PATHS.rvDir(opts.user)}/checkpoints/\${SLURM_JOB_NAME}-\${SLURM_JOB_ID}`;
   lines.push(`# Default checkpoint directory (frameworks will use this)`);
   lines.push(`export RV_CHECKPOINT_DIR="${checkpointDir}"`);
-  lines.push(`export CHECKPOINT_DIR="${checkpointDir}"`);
   lines.push(`mkdir -p "${checkpointDir}" 2>/dev/null || true`);
+  lines.push("");
+
+  // Persistent output directory — scripts can write here to survive snapshot pruning
+  const outputDir = `${PATHS.outputs(opts.user)}/\${SLURM_JOB_NAME}-\${SLURM_JOB_ID}`;
+  lines.push(`# Persistent output directory (survives snapshot pruning)`);
+  lines.push(`export RV_OUTPUT_DIR="${outputDir}"`);
+  lines.push(`mkdir -p "${outputDir}" 2>/dev/null || true`);
   lines.push("");
 
   // Working directory
@@ -174,6 +180,15 @@ export function generateEpilogue(
   if (!exitCodeVar) {
     lines.push(`${v}=$?`);
   }
+
+  // Copy --output paths from snapshot to persistent RV_OUTPUT_DIR
+  if (opts.outputPaths && opts.outputPaths.length > 0) {
+    lines.push(`# Copy outputs to persistent location`);
+    for (const p of opts.outputPaths) {
+      lines.push(`cp -r ${p} "$RV_OUTPUT_DIR/" 2>/dev/null || true`);
+    }
+  }
+
   if (opts.notifyUrl) {
     lines.push(`if [ $${v} -ne 0 ]; then`);
     lines.push(`  _rv_notify FAILED`);

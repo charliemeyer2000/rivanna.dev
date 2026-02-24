@@ -166,6 +166,8 @@ export interface TemplateOptions extends SbatchOptions {
   sharedHfCache?: string;
   /** Deps file name (e.g. "requirements.txt") — needed for Phase 2 GPU-node installs */
   depsFile?: string;
+  /** Relative paths to copy from snapshot to RV_OUTPUT_DIR after job completes */
+  outputPaths?: string[];
 }
 
 export interface SystemState {
@@ -209,6 +211,10 @@ export interface UserRequest {
   depsFile?: string;
   /** Nodes to exclude from scheduling (set by hardware-retry) */
   excludeNodes?: string;
+  /** Relative paths to copy from snapshot to persistent output dir after job completes */
+  outputPaths?: string[];
+  /** Force single-node allocation (no multi-node strategies) */
+  singleNode?: boolean;
 }
 
 export interface BackfillProbe {

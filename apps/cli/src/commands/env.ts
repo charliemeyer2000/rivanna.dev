@@ -1,5 +1,13 @@
+import { existsSync, readFileSync } from "fs";
+import { resolve } from "path";
 import type { Command } from "commander";
-import { setEnvVar, removeEnvVar, getAllEnvVars } from "@/core/env-store.ts";
+import {
+  setEnvVar,
+  removeEnvVar,
+  getAllEnvVars,
+  parseDotEnv,
+  importEnvVars,
+} from "@/core/env-store.ts";
 import { theme } from "@/lib/theme.ts";
 
 const SENSITIVE_PATTERNS = ["KEY", "TOKEN", "SECRET", "PASSWORD"];
@@ -70,6 +78,44 @@ export function registerEnvCommand(program: Command) {
         console.log(theme.success(`Removed ${key}`));
       } else {
         console.log(theme.muted(`${key} not found.`));
+      }
+    });
+
+  env
+    .command("import")
+    .description("Import variables from a .env file")
+    .argument("[file]", "path to .env file", ".env")
+    .action(async (file: string) => {
+      try {
+        const filePath = resolve(file);
+        if (!existsSync(filePath)) {
+          console.error(theme.error(`\nFile not found: ${file}`));
+          process.exit(1);
+        }
+
+        const content = readFileSync(filePath, "utf-8");
+        const vars = parseDotEnv(content);
+
+        if (Object.keys(vars).length === 0) {
+          console.log(theme.muted(`\nNo variables found in ${file}.`));
+          return;
+        }
+
+        const keys = importEnvVars(vars);
+        console.log(
+          theme.success(
+            `\nImported ${keys.length} variable${keys.length === 1 ? "" : "s"} from ${file}:`,
+          ),
+        );
+        for (const key of keys) {
+          console.log(`  ${key}=${maskValue(key, vars[key]!)}`);
+        }
+        console.log();
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error(theme.error(`\nError: ${error.message}`));
+        }
+        process.exit(1);
       }
     });
 }

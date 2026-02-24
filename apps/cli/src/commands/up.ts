@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import ora from "ora";
-import type { GPUType, UserRequest, StrategySubmission } from "@rivanna/shared";
+import type { UserRequest, StrategySubmission } from "@rivanna/shared";
 import {
   allocate,
   submitStrategies,
@@ -8,9 +8,10 @@ import {
   verifyAllocation,
   getTopologyWarnings,
 } from "@/core/allocator.ts";
-import { ensureSetup, parseTime } from "@/lib/setup.ts";
+import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { GPU_TYPE_ALIASES, NOTIFY_URL } from "@/lib/constants.ts";
+import { NOTIFY_URL } from "@/lib/constants.ts";
+import { addGpuOptions, parseGpuOptions } from "@/lib/gpu-options.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName } from "@/core/job-naming.ts";
 import { saveRequest } from "@/core/request-store.ts";
@@ -27,21 +28,9 @@ interface UpOptions {
 }
 
 export function registerUpCommand(program: Command) {
-  program
-    .command("up")
-    .description("Allocate GPUs on Rivanna")
-    .option("-g, --gpu <n>", "number of GPUs", "1")
-    .option(
-      "-t, --type <type>",
-      "GPU type: a100, a6000, a40, h200, v100, rtx3090, mig",
-    )
-    .option("--time <duration>", "total time needed: 2h, 24h, 3d", "2:59:00")
-    .option("--name <name>", "job name")
-    .option(
-      "--mem <size>",
-      "total CPU memory (e.g., 200G). Auto-calculated if omitted",
-    )
-    .option("--mig", "shortcut for --gpu 1 --type mig (free, instant)")
+  const cmd = program.command("up").description("Allocate GPUs on Rivanna");
+
+  addGpuOptions(cmd)
     .option("--dry-run", "show strategies without submitting")
     .option("--json", "output as JSON")
     .action(async (options: UpOptions) => {
@@ -67,22 +56,7 @@ async function runUp(options: UpOptions) {
   const isJson = !!options.json;
 
   // Parse options
-  let gpuCount = parseInt(options.gpu, 10);
-  let gpuType: GPUType | undefined;
-  if (options.mig) {
-    gpuCount = 1;
-    gpuType = "mig";
-  } else if (options.type) {
-    const alias = GPU_TYPE_ALIASES[options.type.toLowerCase()];
-    if (!alias) {
-      throw new Error(
-        `Unknown GPU type: "${options.type}". Valid: ${Object.keys(GPU_TYPE_ALIASES).join(", ")}`,
-      );
-    }
-    gpuType = alias;
-  }
-
-  const time = parseTime(options.time);
+  const { gpuCount, gpuType, time } = parseGpuOptions(options);
 
   const jobName = options.name ?? generateJobName(undefined);
 
@@ -229,7 +203,6 @@ async function runUp(options: UpOptions) {
     config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
   const envExports = [
     `RV_CHECKPOINT_DIR=${ckptDir}`,
-    `CHECKPOINT_DIR=${ckptDir}`,
     `HF_HOME=${hfHome}`,
     `UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
     `PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
