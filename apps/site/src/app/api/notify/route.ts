@@ -4,7 +4,7 @@ import { createHmac } from "crypto";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const HMAC_SECRET = process.env.NOTIFY_HMAC_SECRET!;
-const FROM = "rv <noreply@rivanna.dev>";
+const FROM = "rv <noreply@notifications.rivanna.dev>";
 const COMPUTING_ID_RE = /^[a-z]{2,3}\d[a-z]{2,3}$/;
 const VALID_EVENTS = ["STARTED", "COMPLETED", "FAILED", "RESUBMITTED"];
 const TIMESTAMP_WINDOW_S = 600; // 10 minutes
