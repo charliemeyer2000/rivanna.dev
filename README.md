@@ -68,7 +68,7 @@ packages/shared/   # shared types and constants
 
 ```bash
 pnpm dev:cli       # watch mode for CLI
-pnpm dev:site      # Next.js dev server with Turbopack
+pnpm dev:site      # Next.js server
 pnpm run build     # build everything (turbo)
 pnpm check-types   # typecheck all packages
 ```
@@ -89,11 +89,6 @@ The site needs a `.env.local` in `apps/site/` with credentials for the notificat
 
 Releases are fully automated via [release-please](https://github.com/googleapis/release-please):
 
-1. Push conventional commits to `main`
-2. release-please opens (or updates) a Release PR that accumulates changelog entries
-3. Merge the Release PR when you're ready to ship
-4. release-please creates a GitHub Release, tags it (`cli-v*`), bumps `package.json`, and updates `CHANGELOG.md`
-5. The same workflow then builds linux and macOS binaries and uploads them to the release
-6. Users get the new version via `rv upgrade`
-
-No manual version bumping, tagging, or binary uploading needed.
+1. Just develop like normal, pushing to `main` and/or making PRs for review.
+2. release-please opens (or updates) a Release PR that accumulates changelog entries (for cli specifically)
+3. Merge PR when ready to ship new version of cli.
