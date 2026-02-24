@@ -80,6 +80,11 @@ const docNavItems = [
       { label: "troubleshooting", id: "troubleshooting" },
     ],
   },
+  {
+    href: "/docs/changelog",
+    label: "changelog",
+    subheadings: [],
+  },
 ];
 
 export default function DocsLayoutClient({

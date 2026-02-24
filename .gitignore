@@ -12,3 +12,6 @@ npm-debug.log*
 
 # CLI test scripts (smoke tests, tier tests, workloads)
 apps/cli/tests/
+
+# Generated at build time from apps/cli/CHANGELOG.md
+apps/site/public/docs/changelog.md

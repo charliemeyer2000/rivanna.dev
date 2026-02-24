@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "prebuild": "cp ../../apps/cli/CHANGELOG.md public/docs/changelog.md",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

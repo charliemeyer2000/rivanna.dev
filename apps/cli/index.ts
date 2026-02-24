@@ -28,7 +28,7 @@ async function main() {
     .description("effortless GPU computing on UVA's Rivanna cluster")
     .addHelpText(
       "after",
-      "\nDocs:  https://rivanna.dev/docs\nLLMs:  https://rivanna.dev/llms.txt",
+      "\nDocs:       https://rivanna.dev/docs\nChangelog:  https://rivanna.dev/docs/changelog\nLLMs:       https://rivanna.dev/llms.txt",
     );
 
   registerInitCommand(program);
