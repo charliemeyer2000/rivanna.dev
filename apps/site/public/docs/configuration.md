@@ -91,6 +91,36 @@ rv env rm HF_TOKEN
 
 rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR, RV_OUTPUT_DIR.
 
+## dependencies
+
+rv auto-detects `requirements.txt` or `pyproject.toml` in your project and manages dependencies automatically. you don't need to install packages manually or manage virtual environments.
+
+**how it works:**
+
+1. rv creates a persistent venv at `/scratch/user/.rv/envs/{project}/{branch}/`
+2. installs dependencies using `uv pip install` (not `uv sync` — these are different uv workflows)
+3. the venv is activated automatically in every job via `source .../bin/activate`
+
+your script runs with the venv already active — use bare `python`, not `uv run python`.
+
+**two-phase install.** most packages install on the login node (fast). packages needing CUDA compilation (flash-attn, auto-gptq) are automatically deferred to the compute node where GPU + gcc are available. this happens transparently — no configuration needed.
+
+**additional packages.** if you need packages beyond your deps file (e.g., optional extras), add `pip install` to your script. it installs into rv's active venv and persists across runs:
+
+```bash
+# in your job script
+pip install sae-lens bitsandbytes    # installs into rv's venv, cached for next run
+python train.py
+```
+
+**what NOT to do:**
+
+- don't use `uv sync` or `uv run` — these create a separate `.venv` and conflict with rv's venv
+- don't `unset VIRTUAL_ENV` — rv's activation is correct
+- don't create your own venv — rv manages this per-branch
+
+**shell-string commands.** if you pass a shell string (`rv run "make train"`), rv treats it as opaque and skips dependency management entirely. you own your environment in this mode.
+
 ## scratch keepalive
 
 Rivanna's scratch filesystem has a 90-day purge policy — files not accessed in 90 days are automatically deleted. this would destroy your venv, environment variables, and caches.

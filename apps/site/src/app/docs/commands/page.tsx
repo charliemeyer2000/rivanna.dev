@@ -340,6 +340,14 @@ export default function CommandsPage() {
             flag: "--node <index>",
             description: "show specific node's output (multi-node jobs)",
           },
+          {
+            flag: "--tail <n>",
+            description: "show last N lines (default: entire file)",
+          },
+          {
+            flag: "--raw",
+            description: "show raw output without filtering progress bars",
+          },
         ]}
       >
         <div className="space-y-2 mt-3">

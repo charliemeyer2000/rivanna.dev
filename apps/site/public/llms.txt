@@ -12,3 +12,10 @@ rv is a CLI tool for running GPU jobs on UVA's Rivanna HPC cluster. no SLURM scr
 - [configuration](https://rivanna.dev/docs/configuration.md): config file reference (~/.rv/config.toml)
 - [guides](https://rivanna.dev/docs/gpu-training.md): tips, gotchas, queue times, GPU training best practices, troubleshooting
 - [changelog](https://rivanna.dev/docs/changelog.md): version history and release notes
+
+## dependencies
+
+rv auto-installs from requirements.txt or pyproject.toml into a persistent
+per-branch venv using `uv pip install`. the venv is auto-activated — use
+bare `python` in scripts, not `uv run` or `uv sync`. for extra packages,
+`pip install` in your script (persists in rv's venv).

@@ -20,16 +20,13 @@ function deriveNodePaths(basePath: string, nodeCount: number): string[] {
   return Array.from({ length: nodeCount }, (_, i) => `${base}.node${i}${ext}`);
 }
 
-/**
- * Tail a job's log files, printing new lines as they appear.
- * Polls every 3 seconds until the job finishes.
- *
- * For multi-node jobs (nodeCount > 1), tails per-node files and prefixes
- * output with [node0], [node1], etc. Falls back to sbatch-level files
- * if per-node files are empty (preamble error).
- *
- * Returns the final job state and exit code.
- */
+export function stripProgressLines(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => !line.includes("\r") && !/\d+%\|.*\|/.test(line))
+    .join("\n");
+}
+
 export async function tailJobLogs(
   slurm: SlurmClient,
   jobId: string,
@@ -40,11 +37,13 @@ export async function tailJobLogs(
     stream?: LogStream;
     nodeCount?: number;
     nodeFilter?: number;
+    raw?: boolean;
   },
 ): Promise<JobResult> {
   const stream = options?.stream ?? "both";
   const nodeCount = options?.nodeCount ?? 1;
   const nodeFilter = options?.nodeFilter;
+  const raw = options?.raw ?? false;
   const isMultiNode = nodeCount > 1;
 
   if (isMultiNode) {
@@ -53,25 +52,27 @@ export async function tailJobLogs(
       stream,
       nodeCount,
       nodeFilter,
+      raw,
     });
   }
 
   return tailSingleNode(slurm, jobId, outPath, errPath, {
     silent: options?.silent,
     stream,
+    raw,
   });
 }
 
-// --------------- Single-node tailing (unchanged logic) ---------------
+// --------------- Single-node tailing ---------------
 
 async function tailSingleNode(
   slurm: SlurmClient,
   jobId: string,
   outPath: string,
   errPath: string,
-  options: { silent?: boolean; stream: LogStream },
+  options: { silent?: boolean; stream: LogStream; raw?: boolean },
 ): Promise<JobResult> {
-  const { stream } = options;
+  const { stream, raw } = options;
   const trackOut = stream === "out" || stream === "both";
   const trackErr = stream === "err" || stream === "both";
 
@@ -105,15 +106,17 @@ async function tailSingleNode(
     const outTotal = trackOut ? parseInt(countResults[idx++] ?? "0", 10) : 0;
     const errTotal = trackErr ? parseInt(countResults[idx++] ?? "0", 10) : 0;
 
-    const readCmds: Array<{ cmd: string }> = [];
+    const readCmds: Array<{ cmd: string; isErr: boolean }> = [];
     if (trackOut && outTotal > prevOut) {
       readCmds.push({
         cmd: `tail -n +${prevOut + 1} ${outPath} 2>/dev/null | head -n ${outTotal - prevOut}`,
+        isErr: false,
       });
     }
     if (trackErr && errTotal > prevErr) {
       readCmds.push({
         cmd: `tail -n +${prevErr + 1} ${errPath} 2>/dev/null | head -n ${errTotal - prevErr}`,
+        isErr: true,
       });
     }
 
@@ -123,9 +126,18 @@ async function tailSingleNode(
         .catch(() => readCmds.map(() => ""));
 
       for (let i = 0; i < readCmds.length; i++) {
-        const content = readResults[i];
+        let content = readResults[i];
         if (!content) continue;
-        process.stdout.write(content + "\n");
+        if (!raw) content = stripProgressLines(content);
+        if (!content) continue;
+        if (readCmds[i]!.isErr && stream === "both") {
+          for (const line of content.split("\n")) {
+            if (line.length === 0) continue;
+            process.stdout.write(theme.error("[stderr] ") + line + "\n");
+          }
+        } else {
+          process.stdout.write(content + "\n");
+        }
       }
     }
 
@@ -168,9 +180,10 @@ async function tailMultiNode(
     stream: LogStream;
     nodeCount: number;
     nodeFilter?: number;
+    raw?: boolean;
   },
 ): Promise<JobResult> {
-  const { stream, nodeCount, nodeFilter } = options;
+  const { stream, nodeCount, nodeFilter, raw } = options;
   const trackOut = stream === "out" || stream === "both";
   const trackErr = stream === "err" || stream === "both";
 
@@ -274,16 +287,22 @@ async function tailMultiNode(
         .catch(() => readCmds.map(() => ""));
 
       for (let i = 0; i < readCmds.length; i++) {
-        const content = readResults[i];
+        let content = readResults[i];
+        if (!content) continue;
+        if (!raw) content = stripProgressLines(content);
         if (!content) continue;
 
         const { nodeFile } = readCmds[i]!;
         const prefix = theme.muted(`[node${nodeFile.nodeIndex}] `);
+        const errPrefix =
+          nodeFile.type === "err" && stream === "both"
+            ? theme.error("[stderr] ")
+            : "";
         const lines = content.split("\n");
         for (const line of lines) {
           if (line.length === 0 && lines.indexOf(line) === lines.length - 1)
             continue;
-          process.stdout.write(prefix + line + "\n");
+          process.stdout.write(prefix + errPrefix + line + "\n");
         }
       }
     }
@@ -308,24 +327,37 @@ async function tailMultiNode(
     const outTotal = trackOut ? parseInt(countResults[idx++] ?? "0", 10) : 0;
     const errTotal = trackErr ? parseInt(countResults[idx++] ?? "0", 10) : 0;
 
-    const readCmds: string[] = [];
+    const readCmds: Array<{ cmd: string; isErr: boolean }> = [];
     if (trackOut && outTotal > fallbackOutLines) {
-      readCmds.push(
-        `tail -n +${fallbackOutLines + 1} ${outPath} 2>/dev/null | head -n ${outTotal - fallbackOutLines}`,
-      );
+      readCmds.push({
+        cmd: `tail -n +${fallbackOutLines + 1} ${outPath} 2>/dev/null | head -n ${outTotal - fallbackOutLines}`,
+        isErr: false,
+      });
     }
     if (trackErr && errTotal > fallbackErrLines) {
-      readCmds.push(
-        `tail -n +${fallbackErrLines + 1} ${errPath} 2>/dev/null | head -n ${errTotal - fallbackErrLines}`,
-      );
+      readCmds.push({
+        cmd: `tail -n +${fallbackErrLines + 1} ${errPath} 2>/dev/null | head -n ${errTotal - fallbackErrLines}`,
+        isErr: true,
+      });
     }
 
     if (readCmds.length > 0 && !options.silent) {
       const readResults = await slurm.sshClient
-        .execBatch(readCmds)
+        .execBatch(readCmds.map((r) => r.cmd))
         .catch(() => readCmds.map(() => ""));
-      for (const content of readResults) {
-        if (content) process.stdout.write(content + "\n");
+      for (let i = 0; i < readResults.length; i++) {
+        let content = readResults[i];
+        if (!content) continue;
+        if (!raw) content = stripProgressLines(content);
+        if (!content) continue;
+        if (readCmds[i]!.isErr && stream === "both") {
+          for (const line of content.split("\n")) {
+            if (line.length === 0) continue;
+            process.stdout.write(theme.error("[stderr] ") + line + "\n");
+          }
+        } else {
+          process.stdout.write(content + "\n");
+        }
       }
     }
 

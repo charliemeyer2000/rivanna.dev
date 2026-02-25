@@ -113,12 +113,14 @@ View job output logs. Defaults to the most recent job. Automatically follows out
 rv logs
 ```
 
-| flag             | description                                   | default               |
-| ---------------- | --------------------------------------------- | --------------------- |
-| `--err`          | show stderr instead of stdout                 | —                     |
-| `--pull`         | download log files locally                    | —                     |
-| `-f, --follow`   | follow log output                             | auto for running jobs |
-| `--node <index>` | show specific node's output (multi-node jobs) | —                     |
+| flag             | description                                     | default               |
+| ---------------- | ----------------------------------------------- | --------------------- |
+| `--err`          | show stderr instead of stdout                   | —                     |
+| `--pull`         | download log files locally                      | —                     |
+| `-f, --follow`   | follow log output                               | auto for running jobs |
+| `--node <index>` | show specific node's output (multi-node jobs)   | —                     |
+| `--tail <n>`     | show last N lines (default: entire file)        | —                     |
+| `--raw`          | show raw output without filtering progress bars | —                     |
 
 ```bash
 rv logs 12345 --err     # view stderr

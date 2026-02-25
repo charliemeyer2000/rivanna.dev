@@ -42,12 +42,26 @@ export function addGpuOptions(
   return cmd;
 }
 
-/**
- * Parse the raw GPU options from Commander into typed values.
- * Handles --mig shortcut, GPU type alias resolution, and MIG auto-correct.
- */
+export function parseMem(input: string): string {
+  if (/^\d+[GgMm]?$/.test(input)) return input;
+  if (/^\d+\s*(GB|MB)/i.test(input)) {
+    const cleaned = input.replace(/\s*(GB|MB)/i, (_, u: string) => u[0]!);
+    throw new Error(
+      `Invalid memory format: "${input}". Slurm uses single-letter suffixes — did you mean "${cleaned}"?`,
+    );
+  }
+  throw new Error(
+    `Invalid memory format: "${input}". Use a number with G or M suffix (e.g., 200G, 16000M).`,
+  );
+}
+
 export function parseGpuOptions(options: RawGpuOptions): ParsedGpuOptions {
   let gpuCount = parseInt(options.gpu, 10);
+  if (isNaN(gpuCount) || gpuCount <= 0) {
+    throw new Error(
+      `Invalid GPU count: "${options.gpu}". Must be a positive integer (e.g., 1, 2, 4, 8).`,
+    );
+  }
   let gpuType: GPUType | undefined;
 
   if (options.mig) {

@@ -163,6 +163,21 @@ export default function GuidesPage() {
             threshold.
           </p>
         </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            use MIG as a pre-flight check
+          </p>
+          <p className="text-sm text-gray-600">
+            validate your full pipeline on a free MIG slice before requesting
+            expensive GPUs. MIG has 10GB VRAM — enough to catch import errors,
+            config bugs, and path issues:
+          </p>
+          <CodeBlock>
+            <code className="text-sm text-black whitespace-pre">{`rv run --mig python train.py              # free, instant — catches 90% of bugs
+rv run -t a100 --time 6h python train.py  # submit the real run after validation`}</code>
+          </CodeBlock>
+        </div>
       </section>
 
       {/* ── Queue Times ────────────────────────────────────────── */}
@@ -211,6 +226,15 @@ export default function GuidesPage() {
           check real-time availability with{" "}
           <code className="text-orange-accent">rv status</code>.
         </p>
+
+        <Tip>
+          <strong>system memory (--mem).</strong> rv auto-calculates{" "}
+          <code className="text-orange-accent">--mem</code> based on your GPU
+          count and node specs. override with{" "}
+          <code className="text-orange-accent">--mem 200G</code> if you need
+          more (e.g., large dataset loading, preprocessing). rule of thumb: 2-3x
+          your total VRAM is safe for most training workloads.
+        </Tip>
       </section>
 
       {/* ── Training Overview ──────────────────────────────────── */}
@@ -567,6 +591,20 @@ loss = -(log_probs * advantages).mean() + kl_coef * kl`}
         <h3 className="text-lg font-semibold text-black">troubleshooting</h3>
 
         <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium text-black">
+              job failed — where to start?
+            </p>
+            <p className="text-sm text-gray-600 mb-2">
+              check stderr first — it&apos;s almost always where the real error
+              is:
+            </p>
+            <CodeBlock>
+              <code className="text-sm text-black whitespace-pre">{`rv logs <jobId> --err    # stderr (errors, tracebacks)
+rv logs <jobId>          # stdout (training output)`}</code>
+            </CodeBlock>
+          </div>
+
           <div>
             <p className="text-sm font-medium text-black">
               job stuck in PENDING

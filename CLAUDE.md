@@ -175,6 +175,19 @@ The `grep` on Rivanna compute nodes doesn't have Perl regex support. Use basic o
 
 ## Common Patterns for Agents
 
+### Dependency management
+
+rv auto-detects `requirements.txt` or `pyproject.toml` and installs deps into a persistent per-branch venv using `uv pip install`. The venv is auto-activated — use bare `python` in scripts, not `uv run` or `uv sync`. For additional packages beyond your deps file, add `pip install foo` to your script — it installs into rv's active venv and persists.
+
+### Use MIG as a pre-flight check
+
+Before submitting to expensive GPUs, validate on a free MIG slice:
+
+```bash
+rv run --mig python train.py              # free, instant
+rv run -t a100 --time 6h python train.py  # real run after validation
+```
+
 ### Submit a job and poll for completion
 
 ```bash

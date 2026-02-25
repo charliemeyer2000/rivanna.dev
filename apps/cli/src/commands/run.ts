@@ -15,7 +15,7 @@ import {
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { NOTIFY_URL } from "@/lib/constants.ts";
-import { addGpuOptions, parseGpuOptions } from "@/lib/gpu-options.ts";
+import { addGpuOptions, parseGpuOptions, parseMem } from "@/lib/gpu-options.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName, generateAIJobName } from "@/core/job-naming.ts";
 import { tailJobLogs } from "@/core/log-tailer.ts";
@@ -104,6 +104,34 @@ function warnMisplacedFlags(commandParts: string[]): void {
   }
 }
 
+const EXECUTABLE_NAMES = new Set([
+  "python",
+  "python3",
+  "bash",
+  "sh",
+  "torchrun",
+  "deepspeed",
+  "accelerate",
+  "ray",
+  "node",
+  "bun",
+  "make",
+  "cargo",
+]);
+
+function warnSuspiciousOutputPaths(outputPaths?: string[]): void {
+  if (!outputPaths?.length) return;
+  const suspicious = outputPaths.filter((p) => EXECUTABLE_NAMES.has(p));
+  if (suspicious.length > 0) {
+    console.error(
+      theme.warning(
+        `\n  warning: -o ${suspicious.join(", ")} looks like a command, not an output path.\n` +
+          `    Use -- to separate options from your command: rv run -o ./path -- <command>\n`,
+      ),
+    );
+  }
+}
+
 const ENV_HACK_RE =
   /source\s+\S*\.env|set\s+-a\s*&&\s*source|export\s+(HF_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|WANDB_API_KEY|API_KEY)\s*=/;
 
@@ -132,6 +160,7 @@ function hintLongCommand(rawCommand: string): void {
 
 async function runRun(commandParts: string[], options: RunOptions) {
   warnMisplacedFlags(commandParts);
+  warnSuspiciousOutputPaths(options.output);
   const { config, slurm } = ensureSetup();
   const ssh = slurm.sshClient;
   const isJson = !!options.json;
@@ -206,7 +235,7 @@ async function runRun(commandParts: string[], options: RunOptions) {
     workDir: execution?.workDir,
     venvPath: execution?.venvPath ?? undefined,
     depsFile: execution?.depsFile ?? undefined,
-    mem: options.mem,
+    mem: options.mem ? parseMem(options.mem) : undefined,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
     sharedHfCache: config.shared?.hf_cache,
     outputPaths: options.output,

@@ -28,6 +28,13 @@ rv run python train.py -g 4 -t a100
 
 **backfill scheduling.** jobs under 3 hours qualify for backfill — often near-instant allocation. the default walltime (2:59:00) is set just below this threshold.
 
+**use MIG as a pre-flight check.** validate your full pipeline on a free MIG slice before requesting expensive GPUs. MIG has 10GB VRAM — enough to catch import errors, config bugs, and path issues:
+
+```bash
+rv run --mig python train.py              # free, instant — catches 90% of bugs
+rv run -t a100 --time 6h python train.py  # submit the real run after validation
+```
+
 ## queue times
 
 | GPU type | typical wait | SU/GPU-hr | VRAM   |
@@ -39,6 +46,8 @@ rv run python train.py -g 4 -t a100
 | `h200`   | varies       | 817       | 141 GB |
 
 check real-time availability with `rv status`.
+
+**system memory (--mem).** rv auto-calculates `--mem` based on your GPU count and node specs. override with `--mem 200G` if you need more (e.g., large dataset loading, preprocessing). rule of thumb: 2-3x your total VRAM is safe for most training workloads.
 
 ## training overview
 
@@ -196,6 +205,13 @@ loss = -(log_probs * advantages).mean() + kl_coef * kl
 **OOM:** gradient accumulation, mixed precision, activation checkpointing, FSDP FULL_SHARD (63% savings).
 
 ## troubleshooting
+
+**job failed — where to start?** check stderr first — it's almost always where the real error is:
+
+```bash
+rv logs <jobId> --err    # stderr (errors, tracebacks)
+rv logs <jobId>          # stdout (training output)
+```
 
 **job stuck in PENDING:** check `rv status`, try a different GPU type, use `--mig` for instant free allocation, reduce `--time` below 3h for backfill.
 

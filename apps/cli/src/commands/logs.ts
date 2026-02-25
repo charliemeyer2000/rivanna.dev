@@ -3,7 +3,11 @@ import ora from "ora";
 import { PATHS } from "@rivanna/shared";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
-import { tailJobLogs, type LogStream } from "@/core/log-tailer.ts";
+import {
+  tailJobLogs,
+  stripProgressLines,
+  type LogStream,
+} from "@/core/log-tailer.ts";
 import { reapLosers } from "@/core/request-store.ts";
 
 interface LogsOptions {
@@ -13,6 +17,8 @@ interface LogsOptions {
   follow?: boolean;
   json?: boolean;
   node?: string;
+  tail?: string;
+  raw?: boolean;
 }
 
 export function registerLogsCommand(program: Command) {
@@ -25,6 +31,8 @@ export function registerLogsCommand(program: Command) {
     .option("--pull", "download log files locally")
     .option("-f, --follow", "follow log output (default for running jobs)")
     .option("--node <index>", "show specific node (multi-node jobs)")
+    .option("--tail <n>", "show last N lines (default: entire file)")
+    .option("--raw", "show raw output without filtering progress bars")
     .option("--json", "output as JSON")
     .action(async (jobId: string | undefined, options: LogsOptions) => {
       try {
@@ -214,12 +222,16 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
   // Follow mode or static read
   const shouldFollow = options.follow ?? false;
 
+  const tailLines = options.tail ? parseInt(options.tail, 10) : undefined;
+  const raw = !!options.raw;
+
   if (shouldFollow) {
     await tailJobLogs(slurm, targetJobId, outPath, errPath, {
       silent: isJson,
       stream,
       nodeCount: nodeCount > 0 ? nodeCount : undefined,
       nodeFilter,
+      raw,
     });
   } else {
     // One-shot read
@@ -233,6 +245,8 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
         nodeFilter,
         stream,
         isJson,
+        tailLines,
+        raw,
       );
     } else {
       await readSingleNodeLogs(
@@ -242,6 +256,8 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
         errPath,
         stream,
         isJson,
+        tailLines,
+        raw,
       );
     }
   }
@@ -254,11 +270,17 @@ async function readSingleNodeLogs(
   errPath: string,
   stream: LogStream,
   isJson: boolean,
+  tailLines?: number,
+  raw?: boolean,
 ): Promise<void> {
+  const readCmd = (path: string) =>
+    tailLines
+      ? `tail -n ${tailLines} ${path} 2>/dev/null || true`
+      : `cat ${path} 2>/dev/null || true`;
+
   if (stream === "both" || stream === "out") {
-    const content = await slurm.sshClient
-      .exec(`cat ${outPath} 2>/dev/null || true`)
-      .catch(() => "");
+    let content = await slurm.sshClient.exec(readCmd(outPath)).catch(() => "");
+    if (!raw && content) content = stripProgressLines(content);
     if (isJson) {
       console.log(JSON.stringify({ jobId, logPath: outPath, content }));
     } else if (content) {
@@ -267,13 +289,19 @@ async function readSingleNodeLogs(
   }
 
   if (stream === "both" || stream === "err") {
-    const content = await slurm.sshClient
-      .exec(`cat ${errPath} 2>/dev/null || true`)
-      .catch(() => "");
+    let content = await slurm.sshClient.exec(readCmd(errPath)).catch(() => "");
+    if (!raw && content) content = stripProgressLines(content);
     if (isJson) {
       console.log(JSON.stringify({ jobId, logPath: errPath, content }));
     } else if (content) {
-      console.log(content);
+      if (stream === "both") {
+        for (const line of content.split("\n")) {
+          if (line.length === 0) continue;
+          console.log(theme.error("[stderr] ") + line);
+        }
+      } else {
+        console.log(content);
+      }
     }
   }
 }
@@ -287,9 +315,15 @@ async function readMultiNodeLogs(
   nodeFilter: number | undefined,
   stream: LogStream,
   isJson: boolean,
+  tailLines?: number,
+  raw?: boolean,
 ): Promise<void> {
   const trackOut = stream === "out" || stream === "both";
   const trackErr = stream === "err" || stream === "both";
+  const readCmd = (path: string) =>
+    tailLines
+      ? `tail -n ${tailLines} ${path} 2>/dev/null || true`
+      : `cat ${path} 2>/dev/null || true`;
 
   for (let i = 0; i < nodeCount; i++) {
     if (nodeFilter !== undefined && i !== nodeFilter) continue;
@@ -301,9 +335,10 @@ async function readMultiNodeLogs(
     const prefix = theme.muted(`[node${i}] `);
 
     if (trackOut) {
-      const content = await slurm.sshClient
-        .exec(`cat ${nodeOutPath} 2>/dev/null || true`)
+      let content = await slurm.sshClient
+        .exec(readCmd(nodeOutPath))
         .catch(() => "");
+      if (!raw && content) content = stripProgressLines(content);
       if (isJson) {
         console.log(
           JSON.stringify({ jobId, node: i, logPath: nodeOutPath, content }),
@@ -316,16 +351,18 @@ async function readMultiNodeLogs(
     }
 
     if (trackErr) {
-      const content = await slurm.sshClient
-        .exec(`cat ${nodeErrPath} 2>/dev/null || true`)
+      let content = await slurm.sshClient
+        .exec(readCmd(nodeErrPath))
         .catch(() => "");
+      if (!raw && content) content = stripProgressLines(content);
       if (isJson) {
         console.log(
           JSON.stringify({ jobId, node: i, logPath: nodeErrPath, content }),
         );
       } else if (content) {
+        const errPrefix = stream === "both" ? theme.error("[stderr] ") : "";
         for (const line of content.split("\n")) {
-          console.log(prefix + line);
+          console.log(prefix + errPrefix + line);
         }
       }
     }

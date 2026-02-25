@@ -211,6 +211,108 @@ ai_api_key = "sk-ant-..."`}</code>
       </section>
 
       <section
+        id="dependencies"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">dependencies</h3>
+        <p className="text-sm text-gray-600">
+          rv auto-detects{" "}
+          <code className="text-orange-accent">requirements.txt</code> or{" "}
+          <code className="text-orange-accent">pyproject.toml</code> in your
+          project and manages dependencies automatically. you don&apos;t need to
+          install packages manually or manage virtual environments.
+        </p>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">how it works</p>
+          <ol className="text-sm text-gray-600 list-decimal pl-5 space-y-1">
+            <li>
+              rv creates a persistent venv at{" "}
+              <code className="text-orange-accent">
+                /scratch/user/.rv/envs/&#123;project&#125;/&#123;branch&#125;/
+              </code>
+            </li>
+            <li>
+              installs dependencies using{" "}
+              <code className="text-orange-accent">uv pip install</code> (not{" "}
+              <code className="text-orange-accent">uv sync</code> — these are
+              different uv workflows)
+            </li>
+            <li>
+              the venv is activated automatically in every job via{" "}
+              <code className="text-orange-accent">
+                source .../bin/activate
+              </code>
+            </li>
+          </ol>
+          <p className="text-sm text-gray-600 mt-2">
+            your script runs with the venv already active — use bare{" "}
+            <code className="text-orange-accent">python</code>, not{" "}
+            <code className="text-orange-accent">uv run python</code>.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            two-phase install
+          </p>
+          <p className="text-sm text-gray-600">
+            most packages install on the login node (fast). packages needing
+            CUDA compilation (flash-attn, auto-gptq) are automatically deferred
+            to the compute node where GPU + gcc are available. this happens
+            transparently — no configuration needed.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">
+            additional packages
+          </p>
+          <p className="text-sm text-gray-600">
+            if you need packages beyond your deps file (e.g., optional extras),
+            add <code className="text-orange-accent">pip install</code> to your
+            script. it installs into rv&apos;s active venv and persists across
+            runs:
+          </p>
+          <CodeBlock>
+            <code className="text-sm text-black whitespace-pre">{`# in your job script
+pip install sae-lens bitsandbytes    # installs into rv's venv, cached for next run
+python train.py`}</code>
+          </CodeBlock>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-black mb-1">what NOT to do</p>
+          <ul className="text-sm text-gray-600 list-disc pl-5 space-y-1">
+            <li>
+              don&apos;t use <code className="text-orange-accent">uv sync</code>{" "}
+              or <code className="text-orange-accent">uv run</code> — these
+              create a separate{" "}
+              <code className="text-orange-accent">.venv</code> and conflict
+              with rv&apos;s venv
+            </li>
+            <li>
+              don&apos;t{" "}
+              <code className="text-orange-accent">unset VIRTUAL_ENV</code> —
+              rv&apos;s activation is correct
+            </li>
+            <li>
+              don&apos;t create your own venv — rv manages this per-branch
+            </li>
+          </ul>
+        </div>
+
+        <p className="text-xs text-gray-500">
+          shell-string commands (e.g.,{" "}
+          <code className="text-orange-accent">
+            rv run &quot;make train&quot;
+          </code>
+          ) skip dependency management entirely — rv treats them as opaque and
+          you own your environment.
+        </p>
+      </section>
+
+      <section
         id="scratch-keepalive"
         className="border border-gray-200 p-4 sm:p-6 space-y-4"
       >

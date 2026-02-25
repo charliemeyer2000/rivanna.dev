@@ -11,7 +11,7 @@ import {
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
 import { NOTIFY_URL } from "@/lib/constants.ts";
-import { addGpuOptions, parseGpuOptions } from "@/lib/gpu-options.ts";
+import { addGpuOptions, parseGpuOptions, parseMem } from "@/lib/gpu-options.ts";
 import { getAllEnvVars } from "@/core/env-store.ts";
 import { generateJobName } from "@/core/job-naming.ts";
 import { saveRequest } from "@/core/request-store.ts";
@@ -68,7 +68,7 @@ async function runUp(options: UpOptions) {
     jobName,
     account: config.defaults.account,
     user: config.connection.user,
-    mem: options.mem,
+    mem: options.mem ? parseMem(options.mem) : undefined,
     notifyUrl: config.notifications.enabled ? NOTIFY_URL : undefined,
     sharedHfCache: config.shared?.hf_cache,
   };
