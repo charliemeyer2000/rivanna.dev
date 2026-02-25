@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.1.0...cli-v0.2.0) (2026-02-25)
+
+
+### Features
+
+* **cli,docs:** improve docs and UX from agent feedback ([c15090c](https://github.com/charliemeyer2000/rivanna.dev/commit/c15090c9b36ea31a47a942bdf36e0bce4917729a))
+
 ## [0.1.0](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.0.23...cli-v0.1.0) (2026-02-24)
 
 
