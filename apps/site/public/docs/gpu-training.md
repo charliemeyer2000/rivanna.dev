@@ -164,7 +164,13 @@ scaler.update()
 
 ## checkpointing
 
+`RV_CHECKPOINT_DIR` is set automatically in every job, keyed by job name (not job ID). jobs submitted with the same `--name` share the same checkpoint directory, so resuming across runs works automatically:
+
 ```python
+import os
+ckpt_dir = os.environ.get("RV_CHECKPOINT_DIR", "./checkpoints")
+path = f"{ckpt_dir}/latest.pt"
+
 # save (rank 0 only)
 checkpoint = {
     'model': model.module.state_dict(),

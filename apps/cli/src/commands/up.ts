@@ -198,7 +198,7 @@ async function runUp(options: UpOptions) {
 
   // --- Attach interactive shell ---
   const user = config.connection.user;
-  const ckptDir = `/scratch/${user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
+  const ckptDir = `/scratch/${user}/.rv/checkpoints/${request.jobName}`;
   const hfHome =
     config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
   const envExports = [

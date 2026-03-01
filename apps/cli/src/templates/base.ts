@@ -140,8 +140,8 @@ export function generatePreamble(opts: TemplateOptions): string {
   lines.push("");
 
   // Framework checkpoint defaults → scratch (avoid filling home dir)
-  // Include job ID for uniqueness — prevents collisions from repeated runs
-  const checkpointDir = `${PATHS.rvDir(opts.user)}/checkpoints/\${SLURM_JOB_NAME}-\${SLURM_JOB_ID}`;
+  // Keyed by job NAME (not ID) so checkpoints persist across runs with the same --name
+  const checkpointDir = `${PATHS.rvDir(opts.user)}/checkpoints/\${SLURM_JOB_NAME}`;
   lines.push(`# Default checkpoint directory (frameworks will use this)`);
   lines.push(`export RV_CHECKPOINT_DIR="${checkpointDir}"`);
   lines.push(`mkdir -p "${checkpointDir}" 2>/dev/null || true`);
