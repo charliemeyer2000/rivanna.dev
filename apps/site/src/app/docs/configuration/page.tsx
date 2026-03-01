@@ -438,6 +438,22 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
               </tr>
               <tr className="border-b border-gray-100">
                 <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.rv/checkpoints/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  persistent checkpoint files (RV_CHECKPOINT_DIR)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs pl-8">
+                  .../&#123;jobName&#125;/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  per-name checkpoint directory (shared across runs)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
                   /scratch/user/.rv/env/
                 </td>
                 <td className="px-3 py-2 text-gray-600">

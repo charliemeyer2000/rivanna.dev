@@ -518,7 +518,7 @@ async function followJob(
 
     // Post-job summary with actionable commands
     if (!isJson) {
-      const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}-${winner.jobId}`;
+      const ckptDir = `/scratch/${config.connection.user}/.rv/checkpoints/${request.jobName}`;
       const outputDir = `/scratch/${config.connection.user}/.rv/outputs/${request.jobName}-${winner.jobId}`;
       console.log(theme.muted("\n  Files on Rivanna:"));
       if (execution?.codeDir) {

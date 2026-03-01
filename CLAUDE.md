@@ -117,11 +117,11 @@ rv gpu <jobId>      # specific job
 
 You can also create a `.rvignore` file (same syntax as `.gitignore`) to exclude additional files.
 
-### 8. Write outputs to persistent storage
+### 8. Write outputs and checkpoints to persistent storage
 
 Jobs run inside an ephemeral snapshot directory. Files written to relative paths land in the snapshot and are pruned after 7 days. Use one of these approaches:
 
-**Option A: Use `RV_OUTPUT_DIR` (recommended).** Set automatically in every job, persists across snapshot pruning:
+**Option A: Use `RV_OUTPUT_DIR` (recommended for results).** Set automatically in every job (per-job-ID), persists across snapshot pruning:
 
 ```python
 import os
@@ -130,13 +130,22 @@ os.makedirs(output_dir, exist_ok=True)
 torch.save(model.state_dict(), f"{output_dir}/model.pt")
 ```
 
-**Option B: Use `--output` flag.** Copies specified paths from the snapshot to persistent storage after the job completes — no script changes needed:
+**Option B: Use `RV_CHECKPOINT_DIR` (recommended for checkpoints).** Set automatically, keyed by job **name** (not ID) so jobs with the same `--name` share checkpoints and can resume across runs:
+
+```python
+import os
+ckpt_dir = os.environ.get("RV_CHECKPOINT_DIR", "./checkpoints")
+os.makedirs(ckpt_dir, exist_ok=True)
+torch.save(checkpoint, f"{ckpt_dir}/latest.pt")
+```
+
+**Option C: Use `--output` flag.** Copies specified paths from the snapshot to persistent storage after the job completes — no script changes needed:
 
 ```bash
 rv run -t a100 --output ./artifacts ./results python train.py
 ```
 
-**Option C: Write to `/scratch/` directly:**
+**Option D: Write to `/scratch/` directly:**
 
 ```python
 import os
@@ -145,7 +154,7 @@ output_dir = f"{SCRATCH}/my-results"
 os.makedirs(output_dir, exist_ok=True)
 ```
 
-Output dir location: `/scratch/<user>/.rv/outputs/<jobName>-<jobId>/`. Pull locally with `rv sync pull <output-dir> ./local/`.
+Output dir location: `/scratch/<user>/.rv/outputs/<jobName>-<jobId>/`. Checkpoint dir location: `/scratch/<user>/.rv/checkpoints/<jobName>/`. Pull locally with `rv sync pull <path> ./local/`.
 
 ### 9. Environment variables are global, not per-project
 

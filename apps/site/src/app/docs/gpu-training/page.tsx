@@ -478,9 +478,21 @@ scaler.update()`}
       >
         <h3 className="text-lg font-semibold text-black">checkpointing</h3>
 
+        <p className="text-sm text-gray-600">
+          <code className="text-orange-accent">RV_CHECKPOINT_DIR</code> is set
+          automatically in every job, keyed by job name (not job ID). jobs
+          submitted with the same{" "}
+          <code className="text-orange-accent">--name</code> share the same
+          checkpoint directory, so resuming across runs works automatically.
+        </p>
+
         <CodeBlock>
           <code className="text-sm text-black">
-            {`# save (rank 0 only)
+            {`import os
+ckpt_dir = os.environ.get("RV_CHECKPOINT_DIR", "./checkpoints")
+path = f"{ckpt_dir}/latest.pt"
+
+# save (rank 0 only)
 checkpoint = {
     'model': model.module.state_dict(),
     'optimizer': optimizer.state_dict(),

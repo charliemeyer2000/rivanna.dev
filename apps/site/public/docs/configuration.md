@@ -153,21 +153,23 @@ the shared directory is created with group-writable setgid permissions (chmod g+
 
 rv organizes remote files under your scratch directory:
 
-| path                                                                  | purpose                                  |
-| --------------------------------------------------------------------- | ---------------------------------------- |
-| /scratch/user/.rv/                                                    | rv home directory                        |
-| /scratch/user/.rv/logs/                                               | job output logs                          |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                    |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)     |
-| /scratch/user/.rv/outputs/                                            | persistent job output files              |
-| .../&#123;jobName&#125;-&#123;jobId&#125;/                            | per-job output directory (RV_OUTPUT_DIR) |
-| /scratch/user/.rv/env/                                                | environment variable files               |
-| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv      |
-| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root   |
-| .../code/                                                             | mutable workspace (sync target)          |
-| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot               |
-| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)        |
-| /scratch/user/.cache/uv/                                              | uv package cache                         |
+| path                                                                  | purpose                                           |
+| --------------------------------------------------------------------- | ------------------------------------------------- |
+| /scratch/user/.rv/                                                    | rv home directory                                 |
+| /scratch/user/.rv/logs/                                               | job output logs                                   |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                             |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)              |
+| /scratch/user/.rv/outputs/                                            | persistent job output files                       |
+| .../&#123;jobName&#125;-&#123;jobId&#125;/                            | per-job output directory (RV_OUTPUT_DIR)          |
+| /scratch/user/.rv/checkpoints/                                        | persistent checkpoint files                       |
+| .../&#123;jobName&#125;/                                              | per-name checkpoint directory (RV_CHECKPOINT_DIR) |
+| /scratch/user/.rv/env/                                                | environment variable files                        |
+| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv               |
+| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root            |
+| .../code/                                                             | mutable workspace (sync target)                   |
+| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot                        |
+| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)                 |
+| /scratch/user/.cache/uv/                                              | uv package cache                                  |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
 
@@ -190,7 +192,8 @@ snapshots older than 7 days are automatically pruned. (the scratch keepalive pro
 
 **important:** your job runs inside the snapshot directory. any files your script writes to relative paths (e.g. `./artifacts/`, `./results/`) land in the snapshot, **not** in your persistent workspace. since snapshots are pruned after 7 days, use one of these approaches:
 
-- write to `RV_OUTPUT_DIR` (set automatically in every job, persists at `/scratch/user/.rv/outputs/{jobName}-{jobId}/`)
+- write to `RV_OUTPUT_DIR` (set automatically, per-job-ID, persists at `/scratch/user/.rv/outputs/{jobName}-{jobId}/`)
+- write to `RV_CHECKPOINT_DIR` for checkpoints (set automatically, per-job-name at `/scratch/user/.rv/checkpoints/{jobName}/` — shared across runs with the same `--name`)
 - use `--output ./artifacts` on `rv run` to auto-copy paths after completion
 - write to an absolute `/scratch/` path manually
 
