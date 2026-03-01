@@ -565,12 +565,20 @@ export default function CommandsPage() {
       <CommandSection
         id="rv-gpu"
         name="rv gpu"
-        description="Show GPU utilization for a running job via nvidia-smi. Defaults to the most recent running job if no ID is given."
+        description="Show GPU utilization for a running job via nvidia-smi. Shows all GPUs allocated to the job. Defaults to the most recent running job if no ID is given. For multi-node jobs, shows per-node output with headers."
         usage="rv gpu"
         options={[
           {
             flag: "[jobId]",
             description: "job ID (defaults to most recent running job)",
+          },
+          {
+            flag: "--node <index>",
+            description: "node index for multi-node jobs (default: all nodes)",
+          },
+          {
+            flag: "--json",
+            description: "output as JSON",
           },
         ]}
       >
@@ -579,6 +587,11 @@ export default function CommandsPage() {
             <code className="text-sm text-black">
               rv gpu 12345
               <span className="text-gray-400"> # specific job</span>
+              {"\n"}rv gpu 12345 --node 0
+              <span className="text-gray-400">
+                {" "}
+                # specific node in multi-node job
+              </span>
             </code>
           </CodeBlock>
         </div>
