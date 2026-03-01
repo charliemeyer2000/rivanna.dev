@@ -105,7 +105,7 @@ async function runSsh(jobId: string | undefined, options: SshOptions) {
 
   // Inject environment variables for the compute session
   const user = config.connection.user;
-  const ckptDir = `/scratch/${user}/.rv/checkpoints/${job.name}-${targetJobId}`;
+  const ckptDir = `/scratch/${user}/.rv/checkpoints/${job.name}`;
   const hfHome =
     config.shared?.hf_cache ?? `/scratch/${user}/.cache/huggingface`;
   const envExports = [
