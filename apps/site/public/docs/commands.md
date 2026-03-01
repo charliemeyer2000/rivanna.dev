@@ -253,11 +253,13 @@ rv exec which python
 
 ## rv gpu
 
-Show GPU utilization for a running job via nvidia-smi. Defaults to the most recent running job if no ID is given.
+Show GPU utilization for a running job via nvidia-smi. Shows all GPUs allocated to the job. Defaults to the most recent running job if no ID is given. For multi-node jobs, shows per-node output with headers.
 
 ```bash
 rv gpu
-rv gpu 12345    # specific job
+rv gpu 12345          # specific job
+rv gpu 12345 --node 0 # specific node in multi-node job
+rv gpu --json         # JSON output
 ```
 
 ## rv upgrade

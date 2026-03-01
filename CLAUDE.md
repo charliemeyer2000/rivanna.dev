@@ -34,6 +34,7 @@ rv exec "ls /scratch/abs6bd/"
 
 # Check GPU utilization of a running job
 rv gpu <jobId>
+rv gpu <jobId> --node 0  # specific node in multi-node job
 
 # Import env vars from .env file (bulk)
 rv env import .env
@@ -96,11 +97,12 @@ rv logs <jobId> --pull   # download locally
 
 ### 5. Checking GPU utilization of running jobs
 
-Use `rv gpu` to check GPU utilization of a running job:
+Use `rv gpu` to check GPU utilization of a running job. Shows all GPUs allocated to the job. For multi-node jobs, shows per-node output with headers:
 
 ```bash
 rv gpu              # most recent running job
 rv gpu <jobId>      # specific job
+rv gpu <jobId> --node 0  # specific node in multi-node job
 ```
 
 ### 6. `rv exec` runs on the login node
