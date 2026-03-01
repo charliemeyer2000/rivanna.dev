@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.0...cli-v0.2.1) (2026-03-01)
+
+
+### Fixes
+
+* **cli:** make RV_CHECKPOINT_DIR per-job-name for cross-run resume ([#6](https://github.com/charliemeyer2000/rivanna.dev/issues/6)) ([00a317d](https://github.com/charliemeyer2000/rivanna.dev/commit/00a317d08a21c97b871c37b7fd62095019adccab))
+* **cli:** show all GPUs in rv gpu + multi-node support ([#5](https://github.com/charliemeyer2000/rivanna.dev/issues/5)) ([846ebb9](https://github.com/charliemeyer2000/rivanna.dev/commit/846ebb97a32fb8cf8e85f307e6b7468ebb08e25e))
+
 ## [0.2.0](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.1.0...cli-v0.2.0) (2026-02-25)
 
 
