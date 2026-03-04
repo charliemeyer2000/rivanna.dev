@@ -137,6 +137,10 @@ export function generatePreamble(opts: TemplateOptions): string {
     `export HF_HOME=${opts.sharedHfCache ?? PATHS.cache.hf(opts.user)}`,
   );
   lines.push(`export VLLM_CACHE_DIR=${PATHS.rvDir(opts.user)}/cache/vllm`);
+  lines.push(`export WANDB_DIR=${PATHS.cache.wandb(opts.user)}`);
+  lines.push(`export WANDB_DATA_DIR=${PATHS.cache.wandb(opts.user)}`);
+  lines.push(`export TRITON_CACHE_DIR=${PATHS.cache.triton(opts.user)}`);
+  lines.push(`export TORCH_HOME=${PATHS.cache.torch(opts.user)}`);
   lines.push("");
 
   // Framework checkpoint defaults → scratch (avoid filling home dir)

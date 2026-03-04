@@ -136,5 +136,8 @@ export const PATHS = {
     uv: (user: string) => `/scratch/${user}/.cache/uv`,
     pip: (user: string) => `/scratch/${user}/.cache/pip`,
     hf: (user: string) => `/scratch/${user}/.cache/huggingface`,
+    wandb: (user: string) => `/scratch/${user}/.cache/wandb`,
+    triton: (user: string) => `/scratch/${user}/.cache/triton`,
+    torch: (user: string) => `/scratch/${user}/.cache/torch`,
   },
 } as const;

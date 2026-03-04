@@ -29,6 +29,10 @@ export const CACHE_ENV_EXPORTS = (user: string, sharedHfCache?: string) => [
   `export UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
   `export PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
   `export HF_HOME=${sharedHfCache ?? `/scratch/${user}/.cache/huggingface`}`,
+  `export WANDB_DIR=/scratch/${user}/.cache/wandb`,
+  `export WANDB_DATA_DIR=/scratch/${user}/.cache/wandb`,
+  `export TRITON_CACHE_DIR=/scratch/${user}/.cache/triton`,
+  `export TORCH_HOME=/scratch/${user}/.cache/torch`,
 ];
 
 // .bashrc block markers

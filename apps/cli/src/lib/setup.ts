@@ -52,6 +52,9 @@ function maybeKeepalive(ssh: SSHClient, config: RvConfig): void {
     `${scratch}/.cache/uv`,
     `${scratch}/.cache/pip`,
     `${scratch}/.cache/huggingface`,
+    `${scratch}/.cache/wandb`,
+    `${scratch}/.cache/triton`,
+    `${scratch}/.cache/torch`,
     `${scratch}/.rv/checkpoints`,
     `${scratch}/rv-workspaces`,
   ];

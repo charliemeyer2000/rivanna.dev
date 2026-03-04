@@ -444,6 +444,10 @@ async function ensureRemoteSetup(
       `set -gx UV_CACHE_DIR /scratch/${user}/.cache/uv`,
       `set -gx PIP_CACHE_DIR /scratch/${user}/.cache/pip`,
       `set -gx HF_HOME ${hfHome}`,
+      `set -gx WANDB_DIR /scratch/${user}/.cache/wandb`,
+      `set -gx WANDB_DATA_DIR /scratch/${user}/.cache/wandb`,
+      `set -gx TRITON_CACHE_DIR /scratch/${user}/.cache/triton`,
+      `set -gx TORCH_HOME /scratch/${user}/.cache/torch`,
     ];
     await upsertShellBlock(ssh, "~/.config/fish/config.fish", fishLines);
   }

@@ -206,6 +206,10 @@ async function runUp(options: UpOptions) {
     `HF_HOME=${hfHome}`,
     `UV_CACHE_DIR=/scratch/${user}/.cache/uv`,
     `PIP_CACHE_DIR=/scratch/${user}/.cache/pip`,
+    `WANDB_DIR=/scratch/${user}/.cache/wandb`,
+    `WANDB_DATA_DIR=/scratch/${user}/.cache/wandb`,
+    `TRITON_CACHE_DIR=/scratch/${user}/.cache/triton`,
+    `TORCH_HOME=/scratch/${user}/.cache/torch`,
   ].join(",");
 
   console.log(theme.muted(`  Job ID: ${winner.jobId}`));
