@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.1...cli-v0.2.2) (2026-03-04)
+
+
+### Fixes
+
+* **cli:** redirect wandb, triton, torch caches to scratch ([794754f](https://github.com/charliemeyer2000/rivanna.dev/commit/794754fc51835181ded5e9a3044ae7eaf8da8cf2))
+
 ## [0.2.1](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.0...cli-v0.2.1) (2026-03-01)
 
 
