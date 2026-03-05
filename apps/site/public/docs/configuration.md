@@ -89,7 +89,7 @@ rv env list
 rv env rm HF_TOKEN
 ```
 
-rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR, RV_OUTPUT_DIR.
+rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, WANDB_DIR, WANDB_DATA_DIR, TRITON_CACHE_DIR, TORCH_HOME, RV_CHECKPOINT_DIR, RV_OUTPUT_DIR.
 
 ## dependencies
 
@@ -153,23 +153,27 @@ the shared directory is created with group-writable setgid permissions (chmod g+
 
 rv organizes remote files under your scratch directory:
 
-| path                                                                  | purpose                                           |
-| --------------------------------------------------------------------- | ------------------------------------------------- |
-| /scratch/user/.rv/                                                    | rv home directory                                 |
-| /scratch/user/.rv/logs/                                               | job output logs                                   |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                             |
-| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)              |
-| /scratch/user/.rv/outputs/                                            | persistent job output files                       |
-| .../&#123;jobName&#125;-&#123;jobId&#125;/                            | per-job output directory (RV_OUTPUT_DIR)          |
-| /scratch/user/.rv/checkpoints/                                        | persistent checkpoint files                       |
-| .../&#123;jobName&#125;/                                              | per-name checkpoint directory (RV_CHECKPOINT_DIR) |
-| /scratch/user/.rv/env/                                                | environment variable files                        |
-| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv               |
-| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root            |
-| .../code/                                                             | mutable workspace (sync target)                   |
-| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot                        |
-| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)                 |
-| /scratch/user/.cache/uv/                                              | uv package cache                                  |
+| path                                                                  | purpose                                            |
+| --------------------------------------------------------------------- | -------------------------------------------------- |
+| /scratch/user/.rv/                                                    | rv home directory                                  |
+| /scratch/user/.rv/logs/                                               | job output logs                                    |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.{out,err}                   | single-node log files                              |
+| .../&#123;jobName&#125;-&#123;jobId&#125;.node&#123;N&#125;.{out,err} | per-node log files (multi-node jobs)               |
+| /scratch/user/.rv/outputs/                                            | persistent job output files                        |
+| .../&#123;jobName&#125;-&#123;jobId&#125;/                            | per-job output directory (RV_OUTPUT_DIR)           |
+| /scratch/user/.rv/checkpoints/                                        | persistent checkpoint files                        |
+| .../&#123;jobName&#125;/                                              | per-name checkpoint directory (RV_CHECKPOINT_DIR)  |
+| /scratch/user/.rv/env/                                                | environment variable files                         |
+| /scratch/user/.rv/envs/{project}/{branch}/                            | per-project, per-branch Python venv                |
+| /scratch/user/rv-workspaces/{project}/{branch}/                       | per-project, per-branch workspace root             |
+| .../code/                                                             | mutable workspace (sync target)                    |
+| .../snapshots/{jobName}-{timestamp}/                                  | per-job immutable snapshot                         |
+| /scratch/user/.cache/huggingface/                                     | HuggingFace model cache (HF_HOME)                  |
+| /scratch/user/.cache/uv/                                              | uv package cache (UV_CACHE_DIR)                    |
+| /scratch/user/.cache/pip/                                             | pip package cache (PIP_CACHE_DIR)                  |
+| /scratch/user/.cache/wandb/                                           | Weights & Biases cache (WANDB_DIR, WANDB_DATA_DIR) |
+| /scratch/user/.cache/triton/                                          | Triton kernel cache (TRITON_CACHE_DIR)             |
+| /scratch/user/.cache/torch/                                           | PyTorch hub cache (TORCH_HOME)                     |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
 

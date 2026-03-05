@@ -205,7 +205,8 @@ ai_api_key = "sk-ant-..."`}</code>
         </CodeBlock>
         <p className="text-xs text-gray-500 mt-2">
           rv also auto-sets these variables in every job: OMP_NUM_THREADS,
-          TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, RV_CHECKPOINT_DIR,
+          TOKENIZERS_PARALLELISM, HF_HOME, VLLM_CACHE_DIR, WANDB_DIR,
+          WANDB_DATA_DIR, TRITON_CACHE_DIR, TORCH_HOME, RV_CHECKPOINT_DIR,
           RV_OUTPUT_DIR.
         </p>
       </section>
@@ -502,7 +503,41 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
                 <td className="px-3 py-2 font-mono text-xs">
                   /scratch/user/.cache/uv/
                 </td>
-                <td className="px-3 py-2 text-gray-600">uv package cache</td>
+                <td className="px-3 py-2 text-gray-600">
+                  uv package cache (UV_CACHE_DIR)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.cache/pip/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  pip package cache (PIP_CACHE_DIR)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.cache/wandb/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  Weights &amp; Biases cache (WANDB_DIR, WANDB_DATA_DIR)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.cache/triton/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  Triton kernel cache (TRITON_CACHE_DIR)
+                </td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-2 font-mono text-xs">
+                  /scratch/user/.cache/torch/
+                </td>
+                <td className="px-3 py-2 text-gray-600">
+                  PyTorch hub cache (TORCH_HOME)
+                </td>
               </tr>
             </tbody>
           </table>
