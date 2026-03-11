@@ -309,7 +309,44 @@ python train.py`}</code>
             rv run &quot;make train&quot;
           </code>
           ) skip dependency management entirely — rv treats them as opaque and
-          you own your environment.
+          you own your environment. however, commands starting with{" "}
+          <code className="text-orange-accent">python</code>/{" "}
+          <code className="text-orange-accent">python3</code> (e.g.,{" "}
+          <code className="text-orange-accent">
+            rv run python -c &quot;...&quot;
+          </code>
+          ) still get deps installed and venv activated.
+        </p>
+      </section>
+
+      <section
+        id="cache-symlinks"
+        className="border border-gray-200 p-4 sm:p-6 space-y-4"
+      >
+        <h3 className="text-lg font-semibold text-black">cache symlinks</h3>
+        <p className="text-sm text-gray-600">
+          <code className="text-orange-accent">rv init</code> automatically
+          creates symlinks from{" "}
+          <code className="text-orange-accent">{"~/.cache/{name}"}</code> to{" "}
+          <code className="text-orange-accent">
+            {"/scratch/user/.cache/{name}"}
+          </code>{" "}
+          for all managed cache directories (huggingface, uv, pip, wandb,
+          triton, torch). this ensures that <strong>any tool</strong> — not just
+          rv-managed jobs — writes caches to scratch instead of filling your
+          home directory quota.
+        </p>
+        <p className="text-sm text-gray-600">
+          if <code className="text-orange-accent">{"~/.cache/{name}"}</code>{" "}
+          already exists as a real directory, rv migrates the contents to
+          scratch and replaces it with a symlink. re-running{" "}
+          <code className="text-orange-accent">rv init</code> updates symlinks
+          without data loss.
+        </p>
+        <p className="text-xs text-gray-500">
+          this prevents &quot;Disk quota exceeded&quot; errors from ~/.cache/
+          bloat. the scratch keepalive protects these directories from the
+          90-day purge.
         </p>
       </section>
 
@@ -553,7 +590,13 @@ hf_cache = "/standard/mygroup/.cache/huggingface"`}</code>
           >
             not backed up
           </a>{" "}
-          and subject to a 90-day purge policy.
+          and subject to a 90-day purge policy.{" "}
+          <code className="text-orange-accent">
+            ~/.cache/&#123;huggingface,uv,pip,wandb,triton,torch&#125;
+          </code>{" "}
+          are symlinked to their scratch equivalents by{" "}
+          <code className="text-orange-accent">rv init</code>, so all tools
+          share one cache location on scratch.
         </p>
       </section>
 

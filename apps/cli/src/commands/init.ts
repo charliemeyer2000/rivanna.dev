@@ -379,23 +379,26 @@ async function ensureRemoteSetup(
   user: string,
   sharedHfCache?: string,
 ): Promise<string> {
-  // Create all required directories
-  const dirs = [
+  const scratchCacheDirs = [
     PATHS.cache.uv(user),
     PATHS.cache.pip(user),
+    PATHS.cache.wandb(user),
+    PATHS.cache.triton(user),
+    PATHS.cache.torch(user),
+  ];
+  const dirs = [
+    ...scratchCacheDirs,
     PATHS.rvDir(user),
     PATHS.logs(user),
     PATHS.envFiles(user),
     PATHS.envs(user),
     PATHS.workspaces(user),
   ];
-  // Only create scratch HF dir if NOT using shared storage
   if (!sharedHfCache) dirs.push(PATHS.cache.hf(user));
   if (sharedHfCache) dirs.push(sharedHfCache);
   await ssh.exec(`mkdir -p ${dirs.join(" ")}`);
 
   // When using shared storage, make scratch HF path a symlink to shared
-  // so any tool hardcoding /scratch/user/.cache/huggingface still works
   if (sharedHfCache) {
     const scratchHf = PATHS.cache.hf(user);
     await ssh.exec(
@@ -408,18 +411,32 @@ async function ensureRemoteSetup(
     );
   }
 
-  // Symlink ~/.cache/huggingface → the active HF cache so all tools share one location
+  // Symlink ALL cache dirs from ~/.cache/{name} → /scratch/user/.cache/{name}
+  // This ensures tools run outside rv (interactive sessions, login node, etc.)
+  // also use scratch instead of filling the home directory quota.
   const hfTarget = sharedHfCache ?? PATHS.cache.hf(user);
-  await ssh.exec(
-    `if [ -d ~/.cache/huggingface ] && [ ! -L ~/.cache/huggingface ]; then ` +
-      `rsync -a --ignore-existing ~/.cache/huggingface/ ${hfTarget}/ && ` +
-      `rm -rf ~/.cache/huggingface && ` +
-      `ln -s ${hfTarget} ~/.cache/huggingface; ` +
-      `elif [ ! -e ~/.cache/huggingface ]; then ` +
-      `mkdir -p ~/.cache && ln -s ${hfTarget} ~/.cache/huggingface; ` +
-      `elif [ -L ~/.cache/huggingface ]; then ` +
-      `rm ~/.cache/huggingface && ln -s ${hfTarget} ~/.cache/huggingface; fi`,
-  );
+  const cacheSymlinks: [string, string][] = [
+    ["huggingface", hfTarget],
+    ["uv", PATHS.cache.uv(user)],
+    ["pip", PATHS.cache.pip(user)],
+    ["wandb", PATHS.cache.wandb(user)],
+    ["triton", PATHS.cache.triton(user)],
+    ["torch", PATHS.cache.torch(user)],
+  ];
+
+  await ssh.exec(`mkdir -p ~/.cache`);
+  for (const [name, target] of cacheSymlinks) {
+    const homePath = `~/.cache/${name}`;
+    await ssh.exec(
+      `if [ -L ${homePath} ]; then ` +
+        `rm ${homePath} && ln -s ${target} ${homePath}; ` +
+        `elif [ -d ${homePath} ]; then ` +
+        `rsync -a --ignore-existing ${homePath}/ ${target}/ 2>/dev/null || true && ` +
+        `rm -rf ${homePath} && ln -s ${target} ${homePath}; ` +
+        `elif [ ! -e ${homePath} ]; then ` +
+        `ln -s ${target} ${homePath}; fi`,
+    );
+  }
 
   // Detect remote login shell
   const remoteShell = await ssh.exec('basename "$SHELL"').catch(() => "bash");

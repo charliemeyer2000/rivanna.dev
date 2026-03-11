@@ -119,7 +119,22 @@ python train.py
 - don't `unset VIRTUAL_ENV` — rv's activation is correct
 - don't create your own venv — rv manages this per-branch
 
-**shell-string commands.** if you pass a shell string (`rv run "make train"`), rv treats it as opaque and skips dependency management entirely. you own your environment in this mode.
+**shell-string commands.** if you pass a shell string (`rv run "make train"`), rv treats it as opaque and skips dependency management entirely. you own your environment in this mode. however, if the command starts with `python`/`python3` (e.g., `rv run python -c "..."` or `rv run python -m mymod`), rv still installs deps and activates the venv — only non-Python commands skip dependency management.
+
+## cache symlinks
+
+`rv init` automatically creates symlinks from `~/.cache/{name}` to `/scratch/user/.cache/{name}` for all managed cache directories (huggingface, uv, pip, wandb, triton, torch). this ensures that **any tool** — not just rv-managed jobs — writes caches to scratch instead of filling your home directory quota.
+
+if `~/.cache/{name}` already exists as a real directory, rv migrates the contents to scratch and replaces it with a symlink. this is idempotent: re-running `rv init` updates symlinks without data loss.
+
+this means:
+
+- `pip install` on the login node uses scratch for caching
+- `huggingface-cli download` on the login node uses scratch
+- interactive Python sessions use scratch for all caches
+- no more "Disk quota exceeded" errors from `~/.cache/` bloat
+
+the scratch keepalive (below) protects these cache directories from the 90-day purge.
 
 ## scratch keepalive
 
@@ -176,6 +191,8 @@ rv organizes remote files under your scratch directory:
 | /scratch/user/.cache/torch/                                           | PyTorch hub cache (TORCH_HOME)                     |
 
 scratch storage is high-performance (Weka filesystem, ~1.5 GB/s write). files are [not backed up](https://www.rc.virginia.edu/userinfo/storage/non-sensitive-data/#scratch) and subject to a 90-day purge policy.
+
+`~/.cache/{huggingface,uv,pip,wandb,triton,torch}` are symlinked to their scratch equivalents by `rv init`, so all tools (inside and outside rv jobs) share one cache location on scratch.
 
 ## workspace isolation
 

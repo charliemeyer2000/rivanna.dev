@@ -37,6 +37,8 @@ export interface ExecutionResult {
 
 const RUNNABLE_EXTENSIONS = new Set([".py", ".sh", ".bash"]);
 
+const PYTHON_EXECUTABLES = new Set(["python", "python3"]);
+
 const PROJECT_MARKERS = [
   "pyproject.toml",
   "requirements.txt",
@@ -246,6 +248,14 @@ async function ensureVenv(
     return;
   }
 
+  const lastLines = fullInstall.split("\n").slice(-10).join("\n");
+  console.error(
+    `\n  [rv] Full install failed on login node, falling back to wheel-only install...\n  ${lastLines
+      .split("\n")
+      .map((l: string) => `  ${l}`)
+      .join("\n")}\n`,
+  );
+
   // Full install failed (CUDA packages, old gcc, etc.)
   // Fallback: install packages individually, skipping those that need source builds.
   // --only-binary :all: on the full requirements fails atomically, so we iterate
@@ -268,6 +278,20 @@ async function ensureVenv(
     await ssh.exec(`${moduleLoad} && ${uvEnv} ${fallbackCmd} 2>&1 || true`, {
       timeoutMs: 300_000,
     });
+  }
+
+  // Verify something was actually installed (catch silent total failures like disk quota)
+  const pkgCount = await ssh.exec(
+    `${project.venvPath}/bin/python -c "import importlib.metadata; print(len(list(importlib.metadata.distributions())))" 2>/dev/null || echo 0`,
+  );
+  const count = parseInt(pkgCount.trim(), 10) || 0;
+  if (count < 5) {
+    console.error(
+      `\n  [rv] Warning: dependency install appears to have failed — only ${count} packages in venv.` +
+        `\n  [rv] Check disk quota (home dir) or network issues. Re-run to retry.\n`,
+    );
+    // Don't write deps-hash so next run retries
+    return;
   }
 
   // Pre-install standard build toolchain so Phase 2 can use --no-build-isolation.
@@ -466,10 +490,19 @@ async function prepareCwdExecution(
   if (spinner) spinner.text = `Syncing ${project.name}...`;
   await syncProject(ssh, project);
 
-  // For CWD-based execution we skip dep installation and venv activation.
-  // The user's command is opaque (shell string, uv run, make, etc.) and
-  // likely manages its own environment. Activating rv's venv conflicts
-  // with tools like `uv sync` that expect project-local `.venv`.
+  const firstArg = commandArgs[0];
+  const isPythonCommand = firstArg != null && PYTHON_EXECUTABLES.has(firstArg);
+
+  let venvPath: string | null = null;
+  if (isPythonCommand && project.depsFile) {
+    const current = await isVenvCurrent(ssh, project);
+    if (!current) {
+      if (spinner)
+        spinner.text = `Installing dependencies (${project.depsFile})...`;
+      await ensureVenv(ssh, project, user);
+    }
+    venvPath = project.venvPath;
+  }
 
   // Prune old snapshots, then create a new one
   if (spinner) spinner.text = "Creating snapshot...";
@@ -484,9 +517,9 @@ async function prepareCwdExecution(
     command: rawCommand,
     workDir: snapshotPath,
     codeDir: project.remotePath,
-    venvPath: null,
+    venvPath,
     localFilePath: null,
     git: project.git,
-    depsFile: null,
+    depsFile: isPythonCommand ? project.depsFile : null,
   };
 }
