@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.2...cli-v0.2.3) (2026-03-11)
+
+
+### Fixes
+
+* **cli:** symlink all cache dirs to scratch, fix python -c dep install, surface install errors ([#9](https://github.com/charliemeyer2000/rivanna.dev/issues/9)) ([ab24016](https://github.com/charliemeyer2000/rivanna.dev/commit/ab24016abc671a13649fdfc751d3aaed1487314d))
+
 ## [0.2.2](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.1...cli-v0.2.2) (2026-03-04)
 
 
