@@ -8,6 +8,7 @@ import {
   buildJobIndex,
   reapLosers,
 } from "@/core/request-store.ts";
+import { resolveJobId } from "@/core/job-resolver.ts";
 
 interface StopOptions {
   all?: boolean;
@@ -69,13 +70,26 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
     const requests = loadRequests();
     const isNumeric = /^\d+$/.test(jobIdOrName);
 
+    // Resolve partial IDs to full IDs before request-store lookup
+    let resolvedId = jobIdOrName;
+    if (isNumeric) {
+      try {
+        const { jobId: fullId } = await resolveJobId(slurm, jobIdOrName, {
+          verb: "cancel",
+        });
+        resolvedId = fullId;
+      } catch {
+        // If resolve fails, fall through — cancelJob will use the raw input
+      }
+    }
+
     let siblingIds: string[] | null = null;
     let groupName: string | null = null;
 
     if (isNumeric) {
       // Lookup by job ID
       const jobIndex = buildJobIndex(requests);
-      const parentReq = jobIndex.get(jobIdOrName);
+      const parentReq = jobIndex.get(resolvedId);
       if (parentReq && parentReq.strategies.length > 1) {
         siblingIds = parentReq.strategies.map((s) => s.jobId);
         groupName = parentReq.jobName;
@@ -121,9 +135,9 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
 
       // User declined — cancel just the one they specified (if it's a job ID)
       if (isNumeric) {
-        const spinner = ora(`Cancelling job ${jobIdOrName}...`).start();
-        await slurm.cancelJob(jobIdOrName);
-        spinner.succeed(`Cancelled job ${jobIdOrName}.`);
+        const spinner = ora(`Cancelling job ${resolvedId}...`).start();
+        await slurm.cancelJob(resolvedId);
+        spinner.succeed(`Cancelled job ${resolvedId}.`);
         return;
       }
       console.log(theme.muted("Cancelled."));
@@ -150,9 +164,9 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
     }
 
     // Orphan job ID (not in request store) — cancel directly
-    const spinner = ora(`Cancelling job ${jobIdOrName}...`).start();
-    await slurm.cancelJob(jobIdOrName);
-    spinner.succeed(`Cancelled job ${jobIdOrName}.`);
+    const spinner = ora(`Cancelling job ${resolvedId}...`).start();
+    await slurm.cancelJob(resolvedId);
+    spinner.succeed(`Cancelled job ${resolvedId}.`);
     return;
   }
 
