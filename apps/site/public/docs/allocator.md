@@ -8,7 +8,7 @@ rv doesn't just submit to one partition and wait. it probes the cluster, generat
 2. **generate strategies** — for your requested GPU count, rv generates all compatible combinations: GPU type, partition, single-node vs multi-node topology, direct vs backfill vs checkpoint-restart
 3. **rank and prune** — strategies are ranked by estimated wait time and SU cost. dominated strategies (same GPU type and topology but worse on all metrics) are pruned
 4. **fan-out submit** — all surviving strategies are submitted to Slurm simultaneously
-5. **first wins** — rv monitors all submissions. the first job to reach RUNNING state wins; all other pending jobs are cancelled
+5. **first wins** — rv monitors all submissions. the first job to reach RUNNING state wins; all other jobs are cancelled (even if multiple strategies started running simultaneously)
 
 ```bash
 rv up --dry-run    # see all strategies without submitting

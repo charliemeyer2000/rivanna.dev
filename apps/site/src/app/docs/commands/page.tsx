@@ -549,6 +549,13 @@ export default function CommandsPage() {
         name="rv exec"
         description="Run a command on the Rivanna login node (no GPU allocation). Useful for checking SU balance, listing files, or quick remote operations. Accepts both individual arguments and quoted shell strings."
         usage="rv exec allocations"
+        options={[
+          {
+            flag: "--timeout <seconds>",
+            description: "SSH command timeout in seconds",
+            default: "120",
+          },
+        ]}
       >
         <div className="space-y-2 mt-3">
           <CodeBlock>
@@ -557,6 +564,11 @@ export default function CommandsPage() {
           <CodeBlock>
             <code className="text-sm text-black">
               rv exec &quot;pip list | grep torch&quot;
+            </code>
+          </CodeBlock>
+          <CodeBlock>
+            <code className="text-sm text-black">
+              rv exec --timeout 300 &quot;uv pip install vllm&quot;
             </code>
           </CodeBlock>
         </div>

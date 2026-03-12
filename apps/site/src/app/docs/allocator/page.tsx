@@ -48,7 +48,8 @@ export default function AllocatorPage() {
           <li>
             <strong className="text-black">first wins</strong> — rv monitors all
             submissions. the first job to reach RUNNING state wins; all other
-            pending jobs are cancelled
+            jobs are cancelled (even if multiple strategies started running
+            simultaneously)
           </li>
         </ol>
         <CodeBlock>

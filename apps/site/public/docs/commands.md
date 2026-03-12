@@ -249,7 +249,12 @@ Run a command on the Rivanna login node (no GPU allocation). Useful for checking
 rv exec allocations
 rv exec ls /scratch/user
 rv exec which python
+rv exec --timeout 300 "uv pip install vllm"   # longer timeout for slow commands
 ```
+
+| flag                  | description                    | default |
+| --------------------- | ------------------------------ | ------- |
+| `--timeout <seconds>` | SSH command timeout in seconds | 120     |
 
 ## rv gpu
 

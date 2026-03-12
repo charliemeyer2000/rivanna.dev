@@ -107,7 +107,11 @@ rv gpu <jobId> --node 0  # specific node in multi-node job
 
 ### 6. `rv exec` runs on the login node
 
-`rv exec` does NOT run on GPU nodes. It runs on the login node (no GPU, shared, limited resources). Use it for file checks, `sacct` queries, etc. — not for GPU work.
+`rv exec` does NOT run on GPU nodes. It runs on the login node (no GPU, shared, limited resources). Use it for file checks, `sacct` queries, etc. — not for GPU work. Default timeout is 120 seconds; use `--timeout <seconds>` for longer operations:
+
+```bash
+rv exec --timeout 300 "uv pip install vllm"
+```
 
 ### 7. File sync is git-aware
 
