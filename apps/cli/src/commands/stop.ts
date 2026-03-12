@@ -9,6 +9,7 @@ import {
   reapLosers,
 } from "@/core/request-store.ts";
 import { resolveJobId } from "@/core/job-resolver.ts";
+import { killForwardsForJobs } from "@/core/forward-store.ts";
 
 interface StopOptions {
   all?: boolean;
@@ -60,7 +61,9 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
     }
 
     const cancelSpinner = ora(`Cancelling ${jobs.length} jobs...`).start();
-    await slurm.cancelJobs(jobs.map((j) => j.id));
+    const allIds = jobs.map((j) => j.id);
+    await slurm.cancelJobs(allIds);
+    killForwardsForJobs(allIds);
     cancelSpinner.succeed(`Cancelled ${jobs.length} jobs.`);
     return;
   }
@@ -127,6 +130,7 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
           `Cancelling ${siblingIds.length} strategies...`,
         ).start();
         await slurm.cancelJobs(siblingIds);
+        killForwardsForJobs(siblingIds);
         spinner.succeed(
           `Cancelled ${siblingIds.length} strategies for "${groupName}".`,
         );
@@ -137,6 +141,7 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
       if (isNumeric) {
         const spinner = ora(`Cancelling job ${resolvedId}...`).start();
         await slurm.cancelJob(resolvedId);
+        killForwardsForJobs([resolvedId]);
         spinner.succeed(`Cancelled job ${resolvedId}.`);
         return;
       }
@@ -150,6 +155,7 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
       const id = siblingIds[0]!;
       const spinner = ora(`Cancelling job ${id}...`).start();
       await slurm.cancelJob(id);
+      killForwardsForJobs([id]);
       spinner.succeed(`Cancelled job ${id} ("${groupName}").`);
       return;
     }
@@ -166,6 +172,7 @@ async function runStop(jobIdOrName: string | undefined, options: StopOptions) {
     // Orphan job ID (not in request store) — cancel directly
     const spinner = ora(`Cancelling job ${resolvedId}...`).start();
     await slurm.cancelJob(resolvedId);
+    killForwardsForJobs([resolvedId]);
     spinner.succeed(`Cancelled job ${resolvedId}.`);
     return;
   }

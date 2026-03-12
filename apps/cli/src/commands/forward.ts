@@ -7,6 +7,7 @@ import {
   addForward,
   removeForward,
   cleanStaleForwards,
+  cleanForwardsForDeadJobs,
 } from "@/core/forward-store.ts";
 import { resolveJobId } from "@/core/job-resolver.ts";
 
@@ -60,7 +61,18 @@ async function runForward(
 ) {
   // List mode
   if (options.list) {
-    const forwards = cleanStaleForwards();
+    let forwards = cleanStaleForwards();
+    // Also prune forwards for jobs that are no longer running
+    if (forwards.length > 0) {
+      try {
+        const { slurm } = ensureSetup();
+        const jobs = await slurm.getJobs();
+        const activeJobIds = new Set(jobs.map((j) => j.id));
+        forwards = cleanForwardsForDeadJobs(activeJobIds);
+      } catch {
+        // If we can't reach Slurm, fall back to PID-only cleaning
+      }
+    }
     if (options.json) {
       console.log(JSON.stringify(forwards, null, 2));
       return;

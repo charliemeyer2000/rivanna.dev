@@ -55,3 +55,49 @@ export function cleanStaleForwards(): ForwardEntry[] {
   saveForwards(alive);
   return alive;
 }
+
+/**
+ * Kill and remove forwards whose Slurm jobs are no longer active.
+ * Call this with the set of currently active (non-terminal) job IDs.
+ */
+export function cleanForwardsForDeadJobs(
+  activeJobIds: Set<string>,
+): ForwardEntry[] {
+  const forwards = cleanStaleForwards();
+  const alive: ForwardEntry[] = [];
+  for (const fwd of forwards) {
+    if (activeJobIds.has(fwd.jobId)) {
+      alive.push(fwd);
+    } else {
+      // Job is dead — kill the SSH tunnel process
+      try {
+        process.kill(fwd.pid);
+      } catch {
+        // Already dead
+      }
+    }
+  }
+  saveForwards(alive);
+  return alive;
+}
+
+/**
+ * Kill and remove all forwards associated with the given job IDs.
+ */
+export function killForwardsForJobs(jobIds: string[]): void {
+  const idSet = new Set(jobIds);
+  const forwards = loadForwards();
+  const remaining: ForwardEntry[] = [];
+  for (const fwd of forwards) {
+    if (idSet.has(fwd.jobId)) {
+      try {
+        process.kill(fwd.pid);
+      } catch {
+        // Already dead
+      }
+    } else {
+      remaining.push(fwd);
+    }
+  }
+  saveForwards(remaining);
+}
