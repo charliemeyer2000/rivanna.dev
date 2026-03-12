@@ -8,6 +8,7 @@ import {
   removeForward,
   cleanStaleForwards,
 } from "@/core/forward-store.ts";
+import { resolveJobId } from "@/core/job-resolver.ts";
 
 interface ForwardOptions {
   auto?: boolean;
@@ -118,28 +119,19 @@ async function runForward(
   const { config, slurm } = ensureSetup();
 
   // Resolve job
-  let targetJobId = jobId;
-  if (!targetJobId) {
-    const spinner = ora("Finding running jobs...").start();
-    const jobs = await slurm.getJobs();
-    spinner.stop();
+  const spinner = options.json ? null : ora("Finding running jobs...").start();
+  const { jobId: targetJobId, job } = await resolveJobId(slurm, jobId, {
+    activeOnly: true,
+    verb: "forward from",
+  });
+  spinner?.stop();
 
-    const running = jobs.filter((j) => j.state === "RUNNING");
-    if (running.length === 0) {
-      throw new Error("No running jobs to forward from.");
-    }
-    targetJobId = running.sort((a, b) => parseInt(b.id) - parseInt(a.id))[0]!
-      .id;
-  }
-
-  // Get node
-  const jobs = await slurm.getJobs();
-  const job = jobs.find((j) => j.id === targetJobId);
   if (!job || job.nodes.length === 0) {
     throw new Error(
       `Job ${targetJobId} not found or not yet allocated to a node.`,
     );
   }
+
   const nodeIdx = options.node ? parseInt(options.node, 10) : 0;
   if (nodeIdx < 0 || nodeIdx >= job.nodes.length) {
     throw new Error(
@@ -162,7 +154,7 @@ async function runForward(
   if (options.auto) {
     cleanStaleForwards();
     const detected: number[] = [];
-    const spinner = ora("Detecting ports...").start();
+    const autoSpinner = ora("Detecting ports...").start();
 
     for (const [name, p] of Object.entries(WELL_KNOWN_PORTS)) {
       const result = await slurm.sshClient
@@ -172,10 +164,10 @@ async function runForward(
         .catch(() => "");
       if (result.trim().length > 0) {
         detected.push(p);
-        spinner.text = `Detected ${name} on port ${p}`;
+        autoSpinner.text = `Detected ${name} on port ${p}`;
       }
     }
-    spinner.stop();
+    autoSpinner.stop();
 
     if (detected.length === 0) {
       console.log(

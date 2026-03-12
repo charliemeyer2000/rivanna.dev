@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import ora from "ora";
 import { ensureSetup } from "@/lib/setup.ts";
 import { theme } from "@/lib/theme.ts";
+import { resolveJobId } from "@/core/job-resolver.ts";
 
 interface GpuOptions {
   json?: boolean;
@@ -38,28 +39,16 @@ async function runGpu(jobId: string | undefined, options: GpuOptions) {
   const isJson = !!options.json;
 
   const spinner = isJson ? null : ora("Finding job...").start();
-  const jobs = await slurm.getJobs();
+  const { jobId: targetJobId, job } = await resolveJobId(slurm, jobId, {
+    activeOnly: true,
+    verb: "check GPU utilization for",
+  });
   spinner?.stop();
 
-  let job;
-
-  if (!jobId) {
-    job = jobs.find(
-      (j) =>
-        j.state === "RUNNING" ||
-        j.state === "CONFIGURING" ||
-        j.state === "COMPLETING",
-    );
-    if (!job) {
-      throw new Error("No running jobs found. Specify a job ID.");
-    }
-    jobId = job.id;
-  } else {
-    job = jobs.find((j) => j.id === jobId);
-  }
-
   if (!job || job.nodes.length === 0) {
-    throw new Error(`Job ${jobId} not found or not yet allocated to a node.`);
+    throw new Error(
+      `Job ${targetJobId} not found or not yet allocated to a node.`,
+    );
   }
 
   if (!isJson) {
@@ -101,7 +90,7 @@ async function runGpu(jobId: string | undefined, options: GpuOptions) {
       console.log(theme.accent(`--- node ${index}: ${name} ---`));
     }
 
-    const cmd = `srun --jobid=${jobId} --overlap --nodelist=${name} env -u CUDA_VISIBLE_DEVICES nvidia-smi`;
+    const cmd = `srun --jobid=${targetJobId} --overlap --nodelist=${name} env -u CUDA_VISIBLE_DEVICES nvidia-smi`;
     const output = await slurm.sshClient.exec(cmd);
 
     if (isJson) {
@@ -114,10 +103,13 @@ async function runGpu(jobId: string | undefined, options: GpuOptions) {
 
   if (isJson) {
     if (isMultiNode) {
-      console.log(JSON.stringify({ jobId, nodes: jsonResults }));
+      console.log(JSON.stringify({ jobId: targetJobId, nodes: jsonResults }));
     } else {
       console.log(
-        JSON.stringify({ jobId, output: jsonResults[0]?.output ?? "" }),
+        JSON.stringify({
+          jobId: targetJobId,
+          output: jsonResults[0]?.output ?? "",
+        }),
       );
     }
   }

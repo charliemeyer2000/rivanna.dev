@@ -9,6 +9,7 @@ import {
   type LogStream,
 } from "@/core/log-tailer.ts";
 import { reapLosers } from "@/core/request-store.ts";
+import { resolveJobId } from "@/core/job-resolver.ts";
 
 interface LogsOptions {
   out?: boolean;
@@ -112,32 +113,15 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
   const nodeFilter =
     options.node !== undefined ? parseInt(options.node, 10) : undefined;
 
-  let targetJobId = jobId;
+  const spinner = isJson ? null : ora("Finding jobs...").start();
+  const { jobId: targetJobId, jobs } = await resolveJobId(slurm, jobId, {
+    includeHistory: true,
+    verb: "view logs for",
+  });
+  spinner?.stop();
 
-  if (!targetJobId) {
-    const spinner = isJson ? null : ora("Finding jobs...").start();
-    const jobs = await slurm.getJobs();
-    spinner?.stop();
-
-    // Opportunistic fan-out cleanup
-    reapLosers(slurm, jobs).catch(() => {});
-
-    if (jobs.length > 0) {
-      // Prefer running, then most recent
-      const running = jobs.filter((j) => j.state === "RUNNING");
-      const target = running.length > 0 ? running : jobs;
-      targetJobId = target.sort((a, b) => parseInt(b.id) - parseInt(a.id))[0]!
-        .id;
-    } else {
-      // Try recent history
-      const history = await slurm.getJobHistory("now-1day");
-      if (history.length === 0) {
-        throw new Error("No recent jobs found.");
-      }
-      targetJobId = history.sort((a, b) => parseInt(b.id) - parseInt(a.id))[0]!
-        .id;
-    }
-  }
+  // Opportunistic fan-out cleanup
+  reapLosers(slurm, jobs).catch(() => {});
 
   const outPath = await resolveLogPath(slurm, targetJobId, user, "out");
   const errPath = await resolveLogPath(slurm, targetJobId, user, "err");
@@ -154,7 +138,6 @@ async function runLogs(jobId: string | undefined, options: LogsOptions) {
 
   // Show header
   if (!isJson) {
-    const jobs = await slurm.getJobs();
     const job = jobs.find((j) => j.id === targetJobId);
     if (job) {
       console.log(theme.muted(`Job ${job.id}: ${job.name} (${job.state})`));
