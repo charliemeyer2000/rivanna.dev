@@ -99,23 +99,20 @@ export async function reapLosers(
   for (const req of requests) {
     if (req.strategies.length <= 1) continue;
 
-    const hasWinner = req.strategies.some((s) => {
+    // Pick the first active strategy as the winner
+    const winnerId = req.strategies.find((s) => {
       const state = stateMap.get(s.jobId);
       return (
         state === "RUNNING" || state === "CONFIGURING" || state === "COMPLETING"
       );
-    });
-    if (!hasWinner) continue;
+    })?.jobId;
+    if (!winnerId) continue;
 
+    // Cancel all non-winner, non-terminal siblings (including other RUNNING ones)
     for (const s of req.strategies) {
+      if (s.jobId === winnerId) continue;
       const state = stateMap.get(s.jobId);
       if (!state) continue;
-      if (
-        state === "RUNNING" ||
-        state === "CONFIGURING" ||
-        state === "COMPLETING"
-      )
-        continue;
       if (TERMINAL_STATES.has(state as JobState)) continue;
       toCancel.push(s.jobId);
     }
