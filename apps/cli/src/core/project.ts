@@ -408,7 +408,21 @@ export async function prepareExecution(
     if (!current) {
       if (spinner)
         spinner.text = `Installing dependencies (${project.depsFile})...`;
-      await ensureVenv(ssh, project, user);
+
+      // Update spinner with elapsed time so large installs don't look frozen
+      const depStart = Date.now();
+      const depTimer = spinner
+        ? setInterval(() => {
+            const elapsed = Math.round((Date.now() - depStart) / 1000);
+            spinner.text = `Installing dependencies (${project.depsFile})... ${elapsed}s`;
+          }, 1000)
+        : null;
+
+      try {
+        await ensureVenv(ssh, project, user);
+      } finally {
+        if (depTimer) clearInterval(depTimer);
+      }
     }
     venvPath = project.venvPath;
   }
@@ -499,7 +513,20 @@ async function prepareCwdExecution(
     if (!current) {
       if (spinner)
         spinner.text = `Installing dependencies (${project.depsFile})...`;
-      await ensureVenv(ssh, project, user);
+
+      const depStart = Date.now();
+      const depTimer = spinner
+        ? setInterval(() => {
+            const elapsed = Math.round((Date.now() - depStart) / 1000);
+            spinner.text = `Installing dependencies (${project.depsFile})... ${elapsed}s`;
+          }, 1000)
+        : null;
+
+      try {
+        await ensureVenv(ssh, project, user);
+      } finally {
+        if (depTimer) clearInterval(depTimer);
+      }
     }
     venvPath = project.venvPath;
   }
