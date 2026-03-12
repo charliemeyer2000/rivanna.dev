@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.3...cli-v0.2.4) (2026-03-12)
+
+
+### Fixes
+
+* **cli:** add shared job resolver with partial ID matching across all commands ([#11](https://github.com/charliemeyer2000/rivanna.dev/issues/11)) ([a099eab](https://github.com/charliemeyer2000/rivanna.dev/commit/a099eab276eec76a24a7454a385cf5a3705d5f39))
+
 ## [0.2.3](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.2...cli-v0.2.3) (2026-03-11)
 
 
