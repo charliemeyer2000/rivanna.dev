@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.4...cli-v0.3.0) (2026-03-12)
+
+
+### Features
+
+* AI-assisted changes ([ecc571b](https://github.com/charliemeyer2000/rivanna.dev/commit/ecc571b3bc65fca80a7afdf1916d32b09858948f))
+* AI-assisted changes ([8ba027a](https://github.com/charliemeyer2000/rivanna.dev/commit/8ba027a9538bef6486621dbe3c67b756d797f2f8))
+
+
+### Fixes
+
+* **cli:** reap all losing fan-out strategies even if already RUNNING ([8ba027a](https://github.com/charliemeyer2000/rivanna.dev/commit/8ba027a9538bef6486621dbe3c67b756d797f2f8))
+* **cli:** show elapsed time during dep install, increase exec timeout ([ecc571b](https://github.com/charliemeyer2000/rivanna.dev/commit/ecc571b3bc65fca80a7afdf1916d32b09858948f))
+* stopping jobs stops forwards ([0de847a](https://github.com/charliemeyer2000/rivanna.dev/commit/0de847af5592e4067dd128cc7144bb300395f070))
+
 ## [0.2.4](https://github.com/charliemeyer2000/rivanna.dev/compare/cli-v0.2.3...cli-v0.2.4) (2026-03-12)
 
 
