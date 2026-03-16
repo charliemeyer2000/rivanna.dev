@@ -1,1 +1,7 @@
 pnpm exec lint-staged
+
+# Validate nix flake if flake files were changed and nix is available
+if git diff --cached --name-only | grep -q '^flake\.\(nix\|lock\)$' && command -v nix >/dev/null 2>&1; then
+  echo "Checking nix flake..."
+  nix flake check
+fi

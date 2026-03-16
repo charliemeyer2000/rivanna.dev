@@ -72,3 +72,36 @@ jobs:
           files: |
             ./dist/rv-linux/rv-linux
             ./dist/rv-macos/rv-macos
+
+  update-flake:
+    needs: [release-please, upload-binaries]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: cachix/install-nix-action@v30
+
+      - name: Update flake.nix with new version and hashes
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          LINUX_HASH=$(nix hash convert --to sri --hash-algo sha256 $(nix-prefetch-url "https://github.com/${{ github.repository }}/releases/download/${TAG}/rv-linux" 2>/dev/null))
+          MACOS_HASH=$(nix hash convert --to sri --hash-algo sha256 $(nix-prefetch-url "https://github.com/${{ github.repository }}/releases/download/${TAG}/rv-macos" 2>/dev/null))
+
+          sed -i "s|version = \".*\";|version = \"${VERSION}\";|" flake.nix
+          sed -i "s|hash = \"sha256-.*\"; # linux-hash|hash = \"${LINUX_HASH}\"; # linux-hash|" flake.nix
+          sed -i "s|hash = \"sha256-.*\"; # macos-hash|hash = \"${MACOS_HASH}\"; # macos-hash|" flake.nix
+
+          nix flake update
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add flake.nix flake.lock
+          git commit -m "chore: update flake to cli v${{ needs.release-please.outputs.version }}"
+          git push
