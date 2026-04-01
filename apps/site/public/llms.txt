@@ -8,14 +8,50 @@ rv is a CLI tool for running GPU jobs on UVA's Rivanna HPC cluster. no SLURM scr
 
 - [getting started](https://rivanna.dev/docs/getting-started.md): install rv, set up SSH, run your first job
 - [commands](https://rivanna.dev/docs/commands.md): full reference for all 15 rv commands
+- [dependencies & environment](https://rivanna.dev/docs/dependencies.md): venv management, dependency install, torchrun, troubleshooting
 - [smart allocator](https://rivanna.dev/docs/allocator.md): how fan-out strategy and backfill detection work
 - [configuration](https://rivanna.dev/docs/configuration.md): config file reference (~/.rv/config.toml)
 - [guides](https://rivanna.dev/docs/gpu-training.md): tips, gotchas, queue times, GPU training best practices, troubleshooting
 - [changelog](https://rivanna.dev/docs/changelog.md): version history and release notes
 
-## dependencies
+## dependencies & environment (critical for agents)
 
-rv auto-installs from requirements.txt or pyproject.toml into a persistent
-per-branch venv using `uv pip install`. the venv is auto-activated — use
-bare `python` in scripts, not `uv run` or `uv sync`. for extra packages,
-`pip install` in your script (persists in rv's venv).
+rv auto-manages a persistent Python venv per project per branch at
+`/scratch/{user}/.rv/envs/{project}/{branch}/`. it installs from
+`requirements.txt` or `pyproject.toml` using `uv pip install`. the venv is
+activated in every job — `python`, `torchrun`, `pip` all resolve to the venv,
+not the system (which is Python 3.6 and must never be used).
+
+**use relative paths for scripts.** your command runs from within a snapshot of
+your synced project. `rv run torchrun train.py` is correct.
+`rv run torchrun /scratch/.../train.py` is WRONG — it bypasses the workspace
+and may use system binaries instead of the venv's, causing ModuleNotFoundError.
+absolute paths are fine for DATA (datasets, model weights on /scratch/).
+
+**do not** use `uv sync`, `uv run`, `conda`, or create manual venvs — these
+conflict with rv's venv. do not `pip install` into the system Python via
+`rv exec`. do not use `rv exec` for GPU work (it runs on the login node).
+
+**two-phase install:** most packages install on the login node. CUDA-dependent
+packages (flash-attn, auto-gptq) are deferred to the compute node where GPU +
+gcc are available. this happens transparently on first job run.
+
+**torchrun** comes from the venv (installed with torch). rv auto-injects
+`--master-port` to prevent port collisions. for multi-node, rv also handles
+`--nnodes`, `--node-rank`, `--master-addr` via srun.
+
+**verify your env** before expensive runs:
+```
+rv run --mig python -c "import sys; print(sys.executable); import torch; print(torch.cuda.is_available())"
+```
+sys.executable should show `/scratch/.../.rv/envs/.../bin/python`, not `/usr/bin/python3`.
+
+**GLIBCXX errors:** if you see `GLIBCXX_3.4.29 not found`, run:
+`rv env set LD_LIBRARY_PATH /apps/software/standard/core/gcc/14.2.0/lib64`
+
+for extra packages beyond your deps file, add `pip install foo` in your script
+(installs into rv's active venv, persists). or better: add them to your
+requirements.txt.
+
+see [dependencies & environment](https://rivanna.dev/docs/dependencies.md) for
+full details.

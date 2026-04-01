@@ -223,6 +223,15 @@ ai_api_key = "sk-ant-..."`}</code>
           project and manages dependencies automatically. you don&apos;t need to
           install packages manually or manage virtual environments.
         </p>
+        <p className="text-sm text-gray-600">
+          for a comprehensive guide covering the venv lifecycle, relative vs
+          absolute paths, two-phase install, torchrun integration, and
+          troubleshooting, see{" "}
+          <a href="/docs/dependencies" className="text-orange-accent underline">
+            dependencies &amp; environment
+          </a>
+          .
+        </p>
 
         <div>
           <p className="text-sm font-medium text-black mb-1">how it works</p>

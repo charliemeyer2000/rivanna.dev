@@ -188,11 +188,69 @@ rv run --time 10h -t a100 python train.py
 
 The `grep` on Rivanna compute nodes doesn't have Perl regex support. Use basic or extended regex, or tools like `awk`/`sed` instead.
 
+## Dependencies & Environment (READ THIS FIRST)
+
+rv manages a persistent Python venv per project per branch. Understanding this is critical — the most common agent mistake is bypassing the venv.
+
+### How the venv works
+
+1. rv creates a venv at `/scratch/{user}/.rv/envs/{project}/{branch}/`
+2. Installs deps from `requirements.txt` or `pyproject.toml` via `uv pip install`
+3. Every job script activates this venv before running your command
+4. `python`, `torchrun`, `pip`, etc. all resolve to the venv — not the system
+
+The system Python is **3.6** (`/usr/bin/python3`). The venv Python is **3.12**. Never use the system Python.
+
+### ALWAYS use relative paths for scripts
+
+Your command runs from within a snapshot of your synced project. Use relative paths:
+
+```bash
+# CORRECT — relative paths resolve within the workspace snapshot
+rv run -t a100 -- torchrun --nproc_per_node=4 train.py
+rv run python eval.py --config configs/eval.yaml
+
+# WRONG — absolute script paths bypass the workspace, may use wrong Python/torchrun
+rv run torchrun /scratch/user/sft/train_sft.py
+rv run python /scratch/user/my_script.py
+```
+
+Absolute paths are fine for **data** (datasets, model weights on `/scratch/`). They are NOT fine for scripts or config files that are part of your project.
+
+### torchrun comes from the venv
+
+`torchrun` is installed as part of PyTorch into the venv's `bin/`. rv doesn't do anything special — it just ensures the venv is activated, so the venv's `torchrun` is found on PATH before any system binary. rv auto-injects `--master-port` to prevent collisions.
+
+### What NOT to do
+
+- **Don't use `uv sync`, `uv run`, or `conda`** — conflicts with rv's venv
+- **Don't `pip install` via `rv exec`** — `rv exec` runs on the login node without the venv active and may target the system Python
+- **Don't use `rv exec` for GPU work** — it runs on the login node (no GPU)
+- **Don't manually copy scripts to `/scratch/` and reference them by absolute path** — use `rv run` which syncs and snapshots your project automatically
+
+### Two-phase install
+
+Most packages install on the login node. CUDA-dependent packages (flash-attn, auto-gptq, mamba-ssm) are deferred to the compute node where GPU + gcc are available. This happens transparently.
+
+### Verify your environment
+
+Before expensive runs, test on a free MIG slice:
+
+```bash
+rv run --mig python -c "import sys; print(sys.executable); import torch; print(torch.cuda.is_available())"
+```
+
+`sys.executable` should show `/scratch/.../.rv/envs/.../bin/python`, NOT `/usr/bin/python3`.
+
+### Troubleshooting dependency issues
+
+- **ModuleNotFoundError** → you're probably not using the venv. Check `sys.executable` in your script
+- **GLIBCXX_3.4.29 not found** → `rv env set LD_LIBRARY_PATH /apps/software/standard/core/gcc/14.2.0/lib64`
+- **Stale venv** → `rv exec "rm -rf /scratch/$USER/.rv/envs/{project}/{branch}"` then re-run
+
+Full details: `apps/site/public/docs/dependencies.md`
+
 ## Common Patterns for Agents
-
-### Dependency management
-
-rv auto-detects `requirements.txt` or `pyproject.toml` and installs deps into a persistent per-branch venv using `uv pip install`. The venv is auto-activated — use bare `python` in scripts, not `uv run` or `uv sync`. For additional packages beyond your deps file, add `pip install foo` to your script — it installs into rv's active venv and persists.
 
 ### Use MIG as a pre-flight check
 

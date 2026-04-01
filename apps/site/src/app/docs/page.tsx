@@ -100,10 +100,19 @@ export default function DocsPage() {
         <h2 className="text-xl font-semibold mb-4">what&apos;s next?</h2>
         <ul className="space-y-2 text-gray-600">
           <li>
+            <a
+              href="/docs/dependencies"
+              className="text-orange-accent underline"
+            >
+              dependencies &amp; environment
+            </a>{" "}
+            — how rv manages Python venvs, dependencies, and common pitfalls
+          </li>
+          <li>
             <a href="/docs/commands" className="text-orange-accent underline">
               commands
             </a>{" "}
-            — full reference for all 14 rv commands
+            — full reference for all 15 rv commands
           </li>
           <li>
             <a href="/docs/allocator" className="text-orange-accent underline">

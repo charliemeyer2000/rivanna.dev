@@ -95,6 +95,8 @@ rv also auto-sets these variables in every job: OMP_NUM_THREADS, TOKENIZERS_PARA
 
 rv auto-detects `requirements.txt` or `pyproject.toml` in your project and manages dependencies automatically. you don't need to install packages manually or manage virtual environments.
 
+for a comprehensive guide covering the venv lifecycle, relative vs absolute paths, two-phase install, torchrun integration, and troubleshooting, see [dependencies & environment](./dependencies.md).
+
 **how it works:**
 
 1. rv creates a persistent venv at `/scratch/user/.rv/envs/{project}/{branch}/`

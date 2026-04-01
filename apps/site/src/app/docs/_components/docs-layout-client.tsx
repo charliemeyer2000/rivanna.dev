@@ -18,6 +18,21 @@ const docNavItems = [
     ],
   },
   {
+    href: "/docs/dependencies",
+    label: "dependencies",
+    subheadings: [
+      { label: "how the venv works", id: "how-the-venv-works" },
+      { label: "relative paths", id: "relative-paths" },
+      { label: "torchrun", id: "torchrun" },
+      { label: "two-phase install", id: "two-phase-install" },
+      { label: "extra deps", id: "extra-deps" },
+      { label: "shell commands", id: "shell-commands" },
+      { label: "system python", id: "system-python" },
+      { label: "verification", id: "verification" },
+      { label: "troubleshooting", id: "troubleshooting" },
+    ],
+  },
+  {
     href: "/docs/commands",
     label: "commands",
     subheadings: [

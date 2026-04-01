@@ -44,6 +44,7 @@ rv status
 
 ## what's next?
 
-- [commands](./commands.md) — full reference for all 14 rv commands
+- [commands](./commands.md) — full reference for all 15 rv commands
+- [dependencies & environment](./dependencies.md) — how rv manages Python venvs, dependencies, and common pitfalls
 - [smart allocator](./allocator.md) — how fan-out strategy and backfill detection work
 - [configuration](./configuration.md) — config file, environment variables, notifications
