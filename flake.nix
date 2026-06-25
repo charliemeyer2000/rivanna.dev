@@ -66,7 +66,7 @@
       );
 
       overlays.default = final: _prev: {
-        rv = self.packages.${final.system}.rv;
+        rv = self.packages.${final.stdenv.hostPlatform.system}.rv;
       };
     };
 }
